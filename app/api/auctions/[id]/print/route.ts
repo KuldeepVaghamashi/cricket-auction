@@ -32,16 +32,27 @@ export async function GET(
   try {
     const db = await getDb();
     const auctionId = new ObjectId(id);
+    const teamIdParam = request.nextUrl.searchParams.get("teamId");
+    const teamObjectId = teamIdParam && ObjectId.isValid(teamIdParam) ? new ObjectId(teamIdParam) : null;
+    if (teamIdParam && !teamObjectId) {
+      return NextResponse.json({ error: "Invalid team ID" }, { status: 400 });
+    }
 
     const auction = await db.collection<Auction>("auctions").findOne({ _id: auctionId });
     if (!auction) {
       return NextResponse.json({ error: "Auction not found" }, { status: 404 });
     }
 
-    const teams = await db.collection<Team>("teams").find({ auctionId }).toArray();
+    const teams = teamObjectId
+      ? await db.collection<Team>("teams").find({ _id: teamObjectId, auctionId }).toArray()
+      : await db.collection<Team>("teams").find({ auctionId }).toArray();
+
+    if (teamObjectId && teams.length === 0) {
+      return NextResponse.json({ error: "Team not found" }, { status: 404 });
+    }
     const playersSold = await db
       .collection<Player>("players")
-      .find({ auctionId, status: "sold" })
+      .find(teamObjectId ? { auctionId, status: "sold", soldTo: teamObjectId } : { auctionId, status: "sold" })
       .toArray();
 
     const soldByTeam = new Map<string, Player[]>();
@@ -53,7 +64,7 @@ export async function GET(
       soldByTeam.set(teamId, list);
     }
 
-    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const doc = new PDFDocument({ size: "A4", margin: 50, bufferPages: true });
     const stream = new PassThrough();
     const chunks: Buffer[] = [];
 
@@ -120,7 +131,7 @@ export async function GET(
       doc
         .fillColor("white")
         .fontSize(22)
-        .text("Cricket Auction Results", x0(), 24, {
+        .text(teamObjectId ? "Team Auction Results" : "Cricket Auction Results", x0(), 24, {
           width: contentWidth(),
           align: "left",
         });
@@ -263,13 +274,21 @@ export async function GET(
 
     const totalSold = playersSold.length;
     const totalSoldPoints = playersSold.reduce((sum, p) => sum + (typeof p.soldPrice === "number" ? p.soldPrice : 0), 0);
-    drawStatCards([
-      { label: "Teams", value: `${teams.length}` },
-      { label: "Sold Players", value: `${totalSold}` },
-      { label: "Total Points Spent", value: `${totalSoldPoints}` },
-    ]);
+    drawStatCards(
+      teamObjectId
+        ? [
+            { label: "Sold Players", value: `${totalSold}` },
+            { label: "Points Spent", value: `${totalSoldPoints}` },
+            { label: "Report", value: "Team wise" },
+          ]
+        : [
+            { label: "Teams", value: `${teams.length}` },
+            { label: "Sold Players", value: `${totalSold}` },
+            { label: "Total Points Spent", value: `${totalSoldPoints}` },
+          ]
+    );
 
-    drawSectionTitle("Teams Summary", "Players bought list with points and remaining budget");
+    drawSectionTitle(teamObjectId ? "Team Summary" : "Teams Summary", "Players bought list with points and remaining budget");
 
     // Stable order for PDF
     const teamsSorted = [...teams].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -312,6 +331,27 @@ export async function GET(
       hr(6);
     }
 
+    // -------- Footer with page numbers --------
+    const range = doc.bufferedPageRange();
+    for (let i = range.start; i < range.start + range.count; i++) {
+      doc.switchToPage(i);
+      const footerY = doc.page.height - doc.page.margins.bottom + 18;
+      doc.save();
+      doc
+        .moveTo(x0(), footerY - 8)
+        .lineTo(x0() + contentWidth(), footerY - 8)
+        .lineWidth(1)
+        .strokeColor(COLORS.border)
+        .stroke();
+      doc.fillColor(COLORS.muted).fontSize(9);
+      doc.text(auction.name, x0(), footerY, { width: contentWidth() / 2, align: "left" });
+      doc.text(`Page ${i - range.start + 1} / ${range.count}`, x0() + contentWidth() / 2, footerY, {
+        width: contentWidth() / 2,
+        align: "right",
+      });
+      doc.restore();
+    }
+
     doc.end();
 
     const pdfBuffer = await pdfBufferPromise;
@@ -319,7 +359,7 @@ export async function GET(
     return new NextResponse(pdfBytes, {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="auction-${id}-results.pdf"`,
+        "Content-Disposition": `attachment; filename="auction-${id}${teamIdParam ? `-team-${teamIdParam}` : ""}-results.pdf"`,
         "Cache-Control": "no-store",
       },
     });

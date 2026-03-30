@@ -65,6 +65,7 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
   const [playerBasePrice, setPlayerBasePrice] = useState("");
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [teamPrintingId, setTeamPrintingId] = useState<string | null>(null);
   const [viewerCopied, setViewerCopied] = useState(false);
 
   const handleAddTeam = async (e: React.FormEvent) => {
@@ -179,6 +180,38 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
     }
   };
 
+  const handlePrintTeamPdf = async (teamId: string, teamName: string) => {
+    setTeamPrintingId(teamId);
+    try {
+      const res = await fetch(`/api/auctions/${id}/print?teamId=${encodeURIComponent(teamId)}`, {
+        method: "GET",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        const errorText = data?.error || "Failed to generate PDF";
+        const detailsText =
+          data?.details && typeof data.details === "string" ? data.details : null;
+        alert(detailsText ? `${errorText}\n\nDetails: ${detailsText}` : errorText);
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+
+      const safeName = (teamName || "team").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `auction-${id}-${safeName}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      URL.revokeObjectURL(url);
+    } finally {
+      setTeamPrintingId(null);
+    }
+  };
+
   const handleCopyViewerLink = async () => {
     try {
       const publicBaseUrl =
@@ -246,16 +279,6 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                   Mark Complete
                 </Button>
               </>
-            )}
-            {auction.status === "completed" && (
-              <Button
-                variant="outline"
-                onClick={handlePrintPdf}
-                disabled={printing}
-                className="gap-2"
-              >
-                Print PDF Results
-              </Button>
             )}
             <Link href={`/auction/${id}`} target="_blank" rel="noopener noreferrer">
               <Button variant="outline" className="gap-2">
@@ -393,6 +416,7 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                           <TableHead className="text-right">Players</TableHead>
                           <TableHead className="text-right">Slots Left</TableHead>
                           <TableHead className="text-right">Max Bid</TableHead>
+                          {auction.status === "completed" && <TableHead className="text-right">PDF</TableHead>}
                           {auction.status === "draft" && <TableHead></TableHead>}
                         </TableRow>
                       </TableHeader>
@@ -408,6 +432,18 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                             <TableCell className="text-right font-medium text-primary">
                               {team.maxBid}
                             </TableCell>
+                            {auction.status === "completed" && (
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handlePrintTeamPdf(team._id, team.name)}
+                                  disabled={teamPrintingId === team._id}
+                                >
+                                  {teamPrintingId === team._id ? "Downloading..." : "Download PDF"}
+                                </Button>
+                              </TableCell>
+                            )}
                             {auction.status === "draft" && (
                               <TableCell className="text-right">
                                 <Button
