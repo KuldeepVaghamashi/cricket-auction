@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import PDFDocument from "pdfkit";
+import { PassThrough } from "stream";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { Auction, Player, Team } from "@/lib/types";
@@ -48,9 +49,15 @@ export async function GET(
     }
 
     const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const stream = new PassThrough();
     const chunks: Buffer[] = [];
-
-    doc.on("data", (chunk) => chunks.push(chunk));
+    const done = new Promise<void>((resolve, reject) => {
+      stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      stream.on("end", () => resolve());
+      stream.on("error", (err) => reject(err));
+      doc.on("error", (err) => reject(err));
+    });
+    doc.pipe(stream);
 
     doc.fontSize(20).text("Cricket Auction Results", { align: "center" });
     doc.moveDown(0.5);
@@ -85,9 +92,6 @@ export async function GET(
         continue;
       }
 
-      if (team.captainName) {
-        doc.fontSize(11).text(`Captain: ${team.captainName}`).moveDown(0.1);
-      }
       doc.fontSize(11).text("Players:");
       for (const p of soldPlayers) {
         doc
@@ -98,17 +102,14 @@ export async function GET(
     }
 
     doc.end();
-
-    await new Promise<void>((resolve, reject) => {
-      doc.on("end", () => resolve());
-      doc.on("error", (err) => reject(err));
-    });
+    await done;
 
     const pdfBuffer = Buffer.concat(chunks);
     return new NextResponse(pdfBuffer, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="auction-${id}-results.pdf"`,
+        "Cache-Control": "no-store",
       },
     });
   } catch (error) {

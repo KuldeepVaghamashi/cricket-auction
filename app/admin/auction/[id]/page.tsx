@@ -181,21 +181,9 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
       const publicBaseUrl =
         process.env.NEXT_PUBLIC_VIEWER_BASE_URL?.toString() ?? "";
       const url =
-        typeof window !== "undefined"
-          ? (() => {
-              const { protocol, hostname } = window.location;
-              const origin = window.location.origin;
-
-              if (publicBaseUrl) return `${publicBaseUrl}/auction/${id}`;
-
-              // If admins are on localhost, that URL usually won't open from a mobile device.
-              const lanOrigin =
-                hostname === "localhost" || hostname === "127.0.0.1"
-                  ? `${protocol}//10.180.158.65:3000`
-                  : origin;
-              return `${lanOrigin}/auction/${id}`;
-            })()
-          : `/auction/${id}`;
+        publicBaseUrl && typeof window !== "undefined"
+          ? `${publicBaseUrl}/auction/${id}`
+          : `${window.location.origin}/auction/${id}`;
       await navigator.clipboard.writeText(url);
       setViewerCopied(true);
       window.setTimeout(() => setViewerCopied(false), 2000);

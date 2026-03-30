@@ -140,19 +140,10 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
     try {
       const publicBaseUrl =
         process.env.NEXT_PUBLIC_VIEWER_BASE_URL?.toString() ?? "";
-      const url = (() => {
-        const { protocol, hostname } = window.location;
-        const origin = window.location.origin;
-
-        if (publicBaseUrl) return `${publicBaseUrl}/auction/${id}`;
-
-        // If admins are on localhost, that URL won't open from mobile devices.
-        const lanOrigin =
-          hostname === "localhost" || hostname === "127.0.0.1"
-            ? `${protocol}//10.180.158.65:3000`
-            : origin;
-        return `${lanOrigin}/auction/${id}`;
-      })();
+      const url =
+        publicBaseUrl && typeof window !== "undefined"
+          ? `${publicBaseUrl}/auction/${id}`
+          : `${window.location.origin}/auction/${id}`;
       await navigator.clipboard.writeText(url);
       setViewerCopied(true);
       window.setTimeout(() => setViewerCopied(false), 2000);
