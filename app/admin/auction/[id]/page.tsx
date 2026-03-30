@@ -156,7 +156,10 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
       const res = await fetch(`/api/auctions/${id}/print`, { method: "GET" });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        alert(data?.error || "Failed to generate PDF");
+        const errorText = data?.error || "Failed to generate PDF";
+        const detailsText =
+          data?.details && typeof data.details === "string" ? data.details : null;
+        alert(detailsText ? `${errorText}\n\nDetails: ${detailsText}` : errorText);
         return;
       }
 

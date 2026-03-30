@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import PDFDocument from "pdfkit";
 import { PassThrough } from "stream";
-import { finished } from "stream/promises";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { Auction, Player, Team } from "@/lib/types";
@@ -52,14 +51,20 @@ export async function GET(
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     const stream = new PassThrough();
     const chunks: Buffer[] = [];
-    const done = (async () => {
+
+    const pdfBufferPromise = new Promise<Buffer>((resolve, reject) => {
+      const finalize = () => resolve(Buffer.concat(chunks));
+
       stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-      doc.on("error", () => {
-        // Ensure stream errors propagate
-        stream.destroy();
-      });
-      await finished(stream);
-    })();
+      stream.on("error", reject);
+
+      // pdfkit emits 'end' when the document has finished rendering.
+      // Depending on runtime, stream 'end'/'finish' may vary, so we finalize on multiple signals.
+      doc.on("error", reject);
+      doc.on("end", finalize);
+      stream.on("end", finalize);
+      stream.on("finish", finalize);
+    });
     doc.pipe(stream);
 
     doc.fontSize(20).text("Cricket Auction Results", { align: "center" });
@@ -114,10 +119,10 @@ export async function GET(
     }
 
     doc.end();
-    await done;
 
-    const pdfBuffer = Buffer.concat(chunks);
-    return new NextResponse(pdfBuffer, {
+    const pdfBuffer = await pdfBufferPromise;
+    const pdfBytes = new Uint8Array(pdfBuffer);
+    return new NextResponse(pdfBytes, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="auction-${id}-results.pdf"`,
