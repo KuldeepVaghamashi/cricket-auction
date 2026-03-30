@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import PDFDocument from "pdfkit";
 import { PassThrough } from "stream";
+import { finished } from "stream/promises";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { Auction, Player, Team } from "@/lib/types";
@@ -51,12 +52,14 @@ export async function GET(
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     const stream = new PassThrough();
     const chunks: Buffer[] = [];
-    const done = new Promise<void>((resolve, reject) => {
+    const done = (async () => {
       stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-      stream.on("end", () => resolve());
-      stream.on("error", (err) => reject(err));
-      doc.on("error", (err) => reject(err));
-    });
+      doc.on("error", () => {
+        // Ensure stream errors propagate
+        stream.destroy();
+      });
+      await finished(stream);
+    })();
     doc.pipe(stream);
 
     doc.fontSize(20).text("Cricket Auction Results", { align: "center" });
@@ -69,7 +72,16 @@ export async function GET(
 
     doc.fontSize(12).text(`Generated at: ${new Date().toLocaleString()}`).moveDown();
 
-    for (const team of teams) {
+    // Stable order for PDF
+    const teamsSorted = [...teams].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+    for (const team of teamsSorted) {
+      const remainingBudget =
+        typeof (team as any).remainingBudget === "number" ? (team as any).remainingBudget : 0;
+      const playersBoughtCount = Array.isArray((team as any).playersBought)
+        ? (team as any).playersBought.length
+        : 0;
+
       doc
         .fontSize(14)
         .text(team.name, { underline: true })
@@ -82,8 +94,8 @@ export async function GET(
       doc
         .fontSize(11)
         .fillColor("black")
-        .text(`Remaining Budget: ${team.remainingBudget} pts`)
-        .text(`Players Bought: ${team.playersBought.length}`)
+        .text(`Remaining Budget: ${remainingBudget} pts`)
+        .text(`Players Bought: ${playersBoughtCount}`)
         .moveDown(0.25);
 
       const soldPlayers = soldByTeam.get(team._id?.toString() ?? "") ?? [];
@@ -114,7 +126,16 @@ export async function GET(
     });
   } catch (error) {
     console.error("Print PDF error:", error);
-    return NextResponse.json({ error: "Failed to generate PDF" }, { status: 500 });
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : "Unknown error";
+    return NextResponse.json(
+      { error: "Failed to generate PDF", details: message },
+      { status: 500 }
+    );
   }
 }
 
