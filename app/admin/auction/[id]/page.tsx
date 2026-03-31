@@ -214,19 +214,12 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
 
   const handleCopyViewerLink = async () => {
     try {
-      const publicBaseUrl = process.env.NEXT_PUBLIC_VIEWER_BASE_URL?.toString() ?? "";
-
-      // When developing locally, avoid relying on a tunnel that may be down.
-      const isLocal =
-        typeof window !== "undefined" &&
-        (window.location.hostname === "localhost" ||
-          window.location.hostname === "127.0.0.1" ||
-          window.location.hostname.startsWith("192.168."));
-
-      const baseUrl =
-        isLocal || !publicBaseUrl ? window.location.origin : publicBaseUrl;
-
-      const url = `${baseUrl}/auction/${id}`;
+      // Always copy the current site domain so the link works
+      // on Vercel and when sharing to anyone.
+      const url =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/auction/${id}`
+          : `/auction/${id}`;
       await navigator.clipboard.writeText(url);
       setViewerCopied(true);
       window.setTimeout(() => setViewerCopied(false), 2000);
