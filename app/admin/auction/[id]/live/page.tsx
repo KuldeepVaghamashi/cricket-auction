@@ -56,22 +56,22 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   const { data: teams, mutate: mutateTeams } = useSWR<TeamWithStats[]>(
     `/api/auctions/${id}/teams`,
     fetcher,
-    { refreshInterval: 2000 }
+    { revalidateOnFocus: false }
   );
   const { data: players, mutate: mutatePlayers } = useSWR<PlayerWithId[]>(
     `/api/auctions/${id}/players`,
     fetcher,
-    { refreshInterval: 2000 }
+    { revalidateOnFocus: false }
   );
   const { data: state, mutate: mutateState } = useSWR<AuctionStateResponse>(
     `/api/auctions/${id}/state?lite=1`,
     fetcher,
     { refreshInterval: 1200, revalidateOnFocus: false }
   );
-  const { data: logs } = useSWR<AuctionLogResponse[]>(
+  const { data: logs, mutate: mutateLogs } = useSWR<AuctionLogResponse[]>(
     `/api/auctions/${id}/logs`,
     fetcher,
-    { refreshInterval: 2500 }
+    { revalidateOnFocus: false }
   );
 
   const [loading, setLoading] = useState(false);
@@ -84,7 +84,8 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
     mutateTeams();
     mutatePlayers();
     mutateState();
-  }, [mutateTeams, mutatePlayers, mutateState]);
+    mutateLogs();
+  }, [mutateTeams, mutatePlayers, mutateState, mutateLogs]);
 
   const bidCountByTeamId = useMemo(() => {
     const counts: Record<string, number> = {};
