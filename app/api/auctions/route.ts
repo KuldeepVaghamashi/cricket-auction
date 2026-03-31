@@ -71,8 +71,6 @@ export async function POST(request: NextRequest) {
       currentTeamId: null,
       currentTeamName: null,
       bidHistory: [],
-      playerTimerEndsAt: undefined,
-      playerTimerSeconds: undefined,
       updatedAt: new Date(),
     };
 

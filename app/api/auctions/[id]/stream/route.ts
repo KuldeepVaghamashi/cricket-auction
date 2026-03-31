@@ -120,8 +120,6 @@ export async function GET(
                     teamName: b.teamName,
                     amount: b.amount,
                   })),
-                  playerTimerEndsAt: state.playerTimerEndsAt ?? null,
-                  playerTimerSeconds: state.playerTimerSeconds ?? null,
                 }
               : null,
             currentPlayer,

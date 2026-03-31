@@ -36,8 +36,6 @@ interface AuctionStateResponse {
     timestamp: string;
   }>;
   currentPlayer: PlayerWithId | null;
-  playerTimerEndsAt?: number | null;
-  playerTimerSeconds?: number | null;
 }
 
 interface AuctionLogResponse {
@@ -295,11 +293,6 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   const increment = auction.minIncrement;
   const minLegalBid = state.currentTeamId ? serverCurrentBid + increment : serverCurrentBid;
   const currentBid = pendingBid ?? serverCurrentBid;
-  const timerSecondsLeft =
-    typeof state.playerTimerEndsAt === "number"
-      ? Math.max(0, Math.ceil((state.playerTimerEndsAt - Date.now()) / 1000))
-      : null;
-
   return (
     <div className="min-h-screen p-4 lg:p-6">
       <div className="max-w-[1800px] mx-auto">
@@ -374,11 +367,6 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                     <Badge variant="outline" className="mb-4 text-lg px-4 py-1">
                       Base: {state.currentPlayer.basePrice} pts
                     </Badge>
-                    {timerSecondsLeft !== null && (
-                      <Badge variant="secondary" className="mb-4 text-lg px-4 py-1">
-                        Timer: {timerSecondsLeft}s
-                      </Badge>
-                    )}
                     
                     {/* Current Bid Display */}
                     <div className={`

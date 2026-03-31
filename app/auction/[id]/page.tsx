@@ -29,8 +29,6 @@ interface StreamData {
     currentTeamId: string | null;
     currentTeamName: string | null;
     bidHistory: Array<{ teamName: string; amount: number }>;
-    playerTimerEndsAt?: number | null;
-    playerTimerSeconds?: number | null;
   } | null;
   currentPlayer: {
     _id: string;
@@ -238,16 +236,6 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     <Badge variant="outline" className="text-lg px-4 py-1">
                       Base: {data.currentPlayer.basePrice} pts
                     </Badge>
-                    {typeof data.state?.playerTimerEndsAt === "number" && (
-                      <Badge variant="secondary" className="text-lg px-4 py-1 mb-2 ml-0">
-                        Timer:{" "}
-                        {Math.max(
-                          0,
-                          Math.ceil((data.state!.playerTimerEndsAt - Date.now()) / 1000)
-                        )}
-                        s
-                      </Badge>
-                    )}
 
                     {/* Current Bid Display */}
                     <div

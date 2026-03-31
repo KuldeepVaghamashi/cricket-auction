@@ -53,10 +53,6 @@ export interface AuctionState {
   currentTeamId: ObjectId | null;
   currentTeamName: string | null;
   bidHistory: BidHistoryEntry[];
-  // Optional countdown for "under the hammer" player.
-  // Stored as epoch milliseconds so multiple clients can render consistently.
-  playerTimerEndsAt?: number;
-  playerTimerSeconds?: number;
   updatedAt: Date;
 }
 

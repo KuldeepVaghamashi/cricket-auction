@@ -32,8 +32,6 @@ export async function GET(
         currentTeamId: null,
         currentTeamName: null,
         bidHistory: [],
-        playerTimerEndsAt: undefined,
-        playerTimerSeconds: undefined,
         updatedAt: new Date(),
       };
       await db.collection<AuctionState>("auctionStates").insertOne(newState);
@@ -73,8 +71,6 @@ export async function GET(
           amount: b.amount,
           timestamp: b.timestamp.toISOString(),
         })),
-        playerTimerEndsAt: state.playerTimerEndsAt ?? null,
-        playerTimerSeconds: state.playerTimerSeconds ?? null,
         updatedAt: state.updatedAt.toISOString(),
         currentPlayer: currentPlayer
           ? {

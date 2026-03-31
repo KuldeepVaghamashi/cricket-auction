@@ -10,8 +10,6 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const PLAYER_TIMER_SECONDS = 10;
-
     const authenticated = await isAuthenticated();
     if (!authenticated) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -56,8 +54,6 @@ export async function POST(
           currentTeamId: null,
           currentTeamName: null,
           bidHistory: [],
-          playerTimerEndsAt: Date.now() + PLAYER_TIMER_SECONDS * 1000,
-          playerTimerSeconds: PLAYER_TIMER_SECONDS,
           updatedAt: new Date(),
         },
       }

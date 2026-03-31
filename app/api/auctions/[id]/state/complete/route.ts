@@ -168,10 +168,6 @@ export async function POST(
           bidHistory: [],
           updatedAt: new Date(),
         },
-        $unset: {
-          playerTimerEndsAt: "",
-          playerTimerSeconds: "",
-        },
       }
     );
 
