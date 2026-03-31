@@ -67,6 +67,10 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
   const [printing, setPrinting] = useState(false);
   const [teamPrintingId, setTeamPrintingId] = useState<string | null>(null);
   const [viewerCopied, setViewerCopied] = useState(false);
+  const [selectedTeamForSold, setSelectedTeamForSold] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const handleAddTeam = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -254,6 +258,10 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
   const availablePlayers = players?.filter((p) => p.status === "available") || [];
   const soldPlayers = players?.filter((p) => p.status === "sold") || [];
   const unsoldPlayers = players?.filter((p) => p.status === "unsold") || [];
+  const selectedTeamSoldPlayers =
+    selectedTeamForSold && players
+      ? players.filter((p) => p.status === "sold" && p.soldTo === selectedTeamForSold.id)
+      : [];
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -437,7 +445,11 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                       </TableHeader>
                       <TableBody>
                         {teams.map((team) => (
-                          <TableRow key={team._id}>
+                          <TableRow
+                            key={team._id}
+                            className="cursor-pointer"
+                            onClick={() => setSelectedTeamForSold({ id: team._id, name: team.name })}
+                          >
                             <TableCell className="font-medium">{team.name}</TableCell>
                             <TableCell>{team.captainName || "-"}</TableCell>
                             <TableCell className="text-right">{team.totalBudget}</TableCell>
@@ -452,7 +464,10 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => handlePrintTeamPdf(team._id, team.name)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePrintTeamPdf(team._id, team.name);
+                                  }}
                                   disabled={teamPrintingId === team._id}
                                 >
                                   {teamPrintingId === team._id ? "Downloading..." : "Download PDF"}
@@ -464,7 +479,10 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  onClick={() => handleDeleteTeam(team._id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteTeam(team._id);
+                                  }}
                                   className="text-destructive hover:text-destructive"
                                 >
                                   <Trash2 className="h-4 w-4" />
@@ -609,6 +627,53 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
             </Card>
           </TabsContent>
         </Tabs>
+
+        <Dialog
+          open={!!selectedTeamForSold}
+          onOpenChange={(open) => {
+            if (!open) setSelectedTeamForSold(null);
+          }}
+        >
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>
+                {selectedTeamForSold
+                  ? `Sold Players - ${selectedTeamForSold.name}`
+                  : "Sold Players"}
+              </DialogTitle>
+              <DialogDescription>
+                Team-wise sold player list.
+              </DialogDescription>
+            </DialogHeader>
+
+            {!players ? (
+              <p className="text-sm text-muted-foreground">Loading players...</p>
+            ) : selectedTeamSoldPlayers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No sold players for this team.</p>
+            ) : (
+              <div className="max-h-[60vh] overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Player Name</TableHead>
+                      <TableHead className="text-right">Sold Price</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedTeamSoldPlayers.map((player) => (
+                      <TableRow key={player._id}>
+                        <TableCell className="font-medium">{player.name}</TableCell>
+                        <TableCell className="text-right">
+                          {typeof player.soldPrice === "number" ? `${player.soldPrice} pts` : "-"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

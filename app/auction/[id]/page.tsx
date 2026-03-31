@@ -14,7 +14,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { PlayerWithId, TeamWithStats } from "@/lib/types";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import type { AuctionWithId, PlayerWithId, TeamWithStats } from "@/lib/types";
 
 interface StreamData {
   auction: {
@@ -58,6 +65,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
   const { id } = use(params);
   const [data, setData] = useState<StreamData | null>(null);
   const [connected, setConnected] = useState(false);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
   // These lists change less frequently than the live SSE stream,
@@ -70,6 +78,11 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     refreshInterval: 7000,
     revalidateOnFocus: false,
   });
+  const { data: auctionMeta } = useSWR<AuctionWithId>(`/api/auctions/${id}`, fetcher, {
+    refreshInterval: 30000,
+    revalidateOnFocus: false,
+  });
+  const [nowMs, setNowMs] = useState(Date.now());
 
   useEffect(() => {
     const eventSource = new EventSource(`/api/auctions/${id}/stream`);
@@ -95,6 +108,11 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
       eventSource.close();
     };
   }, [id]);
+
+  useEffect(() => {
+    const t = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
 
   if (!data) {
     return (
@@ -130,6 +148,22 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
       (allTeams ?? []).map((t) => [t._id, t.name])
     );
     const soldPlayers = (allPlayers ?? []).filter((p) => p.status === "sold");
+    const isDraft = data.auction.status === "draft";
+
+    const startsAtMs = auctionMeta?.date ? new Date(auctionMeta.date).getTime() : NaN;
+    const hasStartsAt = Number.isFinite(startsAtMs);
+    const msRemaining = hasStartsAt ? startsAtMs - nowMs : 0;
+    const hasCountdown = isDraft && hasStartsAt && msRemaining > 0;
+
+    const formatCountdown = (ms: number) => {
+      const totalSeconds = Math.floor(ms / 1000);
+      const days = Math.floor(totalSeconds / 86400);
+      const hours = Math.floor((totalSeconds % 86400) / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+      return `${hours}h ${minutes}m ${seconds}s`;
+    };
 
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -143,6 +177,21 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
               <Badge variant="outline" className="text-lg px-4 py-2">
                 {data.auction.status === "draft" ? "Auction Not Started" : "Auction Completed"}
               </Badge>
+              {hasStartsAt && (
+                <div className="flex flex-col items-center gap-1">
+                  <p className="text-sm text-muted-foreground">Scheduled Start</p>
+                  <p className="font-semibold">
+                    {new Date(startsAtMs).toLocaleString()}
+                  </p>
+                </div>
+              )}
+              {isDraft && (
+                <Badge variant={hasCountdown ? "default" : "secondary"} className="text-base px-4 py-2">
+                  {hasCountdown
+                    ? `Starts in: ${formatCountdown(msRemaining)}`
+                    : "Starting soon"}
+                </Badge>
+              )}
               <p className="text-muted-foreground">
                 {data.auction.status === "draft"
                   ? "The auction has not started yet. Please wait for the auctioneer to begin."
@@ -198,6 +247,11 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     (allTeams ?? []).map((t) => [t._id, t.name])
   );
   const soldPlayers = (allPlayers ?? []).filter((p) => p.status === "sold");
+  const selectedTeamName =
+    selectedTeamId ? teamNameById.get(selectedTeamId) ?? "Selected Team" : null;
+  const selectedTeamSoldPlayers = selectedTeamId
+    ? soldPlayers.filter((p) => p.soldTo === selectedTeamId)
+    : [];
 
   return (
     <div className="min-h-screen bg-background">
@@ -390,9 +444,11 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                         <div
                           key={team._id}
                           className={`
-                            p-4 rounded-lg border transition-glow
+                            p-4 rounded-lg border transition-glow cursor-pointer
                             ${isLeading ? "border-primary glow-primary bg-primary/5" : ""}
+                            ${selectedTeamId === team._id ? "border-primary bg-primary/10" : ""}
                           `}
+                          onClick={() => setSelectedTeamId(team._id)}
                         >
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-semibold">{team.name}</span>
@@ -434,6 +490,43 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
       </main>
+
+      <Dialog open={!!selectedTeamId} onOpenChange={(open) => !open && setSelectedTeamId(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedTeamName ? `Sold Players - ${selectedTeamName}` : "Sold Players"}
+            </DialogTitle>
+            <DialogDescription>
+              Team-wise sold player list.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-auto">
+            {selectedTeamSoldPlayers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No sold players for this team.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Player</TableHead>
+                    <TableHead className="text-right">Points</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedTeamSoldPlayers.map((p) => (
+                    <TableRow key={p._id}>
+                      <TableCell className="font-medium">{p.name}</TableCell>
+                      <TableCell className="text-right">
+                        {typeof p.soldPrice === "number" ? p.soldPrice : "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
