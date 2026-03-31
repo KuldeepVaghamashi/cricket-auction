@@ -77,6 +77,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   );
 
   const [loading, setLoading] = useState(false);
+  const [bidLoadingTeamId, setBidLoadingTeamId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingBid, setPendingBid] = useState<number | null>(null);
 
@@ -168,7 +169,8 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   };
 
   const handlePlaceBid = async (teamId: string, amount: number) => {
-    setLoading(true);
+    // Make team selection feel instant and avoid blocking the whole UI.
+    setBidLoadingTeamId(teamId);
     setError(null);
     
     try {
@@ -187,7 +189,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
         refreshAll();
       }
     } finally {
-      setLoading(false);
+      setBidLoadingTeamId(null);
     }
   };
 
@@ -476,7 +478,13 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                             ${isLeading ? "glow-primary" : ""}
                             ${!canAffordBid || team.remainingSlots <= 0 ? "opacity-50" : ""}
                           `}
-                          disabled={loading || !canTeamBid || !canAffordBid || team.remainingSlots <= 0}
+                          disabled={
+                            loading ||
+                            bidLoadingTeamId === team._id ||
+                            !canTeamBid ||
+                            !canAffordBid ||
+                            team.remainingSlots <= 0
+                          }
                           onClick={() => handlePlaceBid(team._id, bidAmount)}
                         >
                           <span className="font-semibold">{team.name}</span>
