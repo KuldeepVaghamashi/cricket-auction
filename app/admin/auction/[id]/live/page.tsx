@@ -152,8 +152,11 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
         hostname === "127.0.0.1" ||
         hostname.startsWith("192.168.");
 
-      const baseUrl =
-        !isLocal || !publicBaseUrl ? origin : publicBaseUrl;
+      // IMPORTANT:
+      // To make the link work on any device/network, always prefer a known public URL
+      // (set `NEXT_PUBLIC_VIEWER_BASE_URL` on Vercel to your Production domain).
+      const hasPublic = /^https?:\/\//i.test(publicBaseUrl);
+      const baseUrl = hasPublic ? publicBaseUrl : origin;
 
       const url = `${baseUrl}/auction/${id}`;
       await navigator.clipboard.writeText(url);
