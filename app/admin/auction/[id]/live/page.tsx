@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use, useCallback } from "react";
+import { useState, use, useCallback, useMemo, useRef } from "react";
 import useSWR from "swr";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,9 +66,9 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
     { refreshInterval: 2000 }
   );
   const { data: state, mutate: mutateState } = useSWR<AuctionStateResponse>(
-    `/api/auctions/${id}/state`,
+    `/api/auctions/${id}/state?lite=1`,
     fetcher,
-    { refreshInterval: 1000 }
+    { refreshInterval: 1200, revalidateOnFocus: false }
   );
   const { data: logs } = useSWR<AuctionLogResponse[]>(
     `/api/auctions/${id}/logs`,
@@ -80,12 +80,22 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   const [bidLoadingTeamId, setBidLoadingTeamId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingBid, setPendingBid] = useState<number | null>(null);
+  const lastBidClickRef = useRef(0);
 
   const refreshAll = useCallback(() => {
     mutateTeams();
     mutatePlayers();
     mutateState();
   }, [mutateTeams, mutatePlayers, mutateState]);
+
+  const bidCountByTeamId = useMemo(() => {
+    const counts: Record<string, number> = {};
+    if (!state?.bidHistory) return counts;
+    for (const b of state.bidHistory) {
+      counts[b.teamId] = (counts[b.teamId] ?? 0) + 1;
+    }
+    return counts;
+  }, [state?.bidHistory]);
 
   const playTone = (frequency: number, durationMs = 90) => {
     // Web Audio API: generate a short beep (no external audio assets).
@@ -169,9 +179,36 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   };
 
   const handlePlaceBid = async (teamId: string, amount: number) => {
+    const now = Date.now();
+    if (now - lastBidClickRef.current < 180) return;
+    lastBidClickRef.current = now;
+
     // Make team selection feel instant and avoid blocking the whole UI.
     setBidLoadingTeamId(teamId);
     setError(null);
+    const optimisticAt = new Date().toISOString();
+    const teamName = teams?.find((t) => t._id === teamId)?.name ?? null;
+
+    // Optimistic update for immediate UI feedback.
+    mutateState(
+      (prev) => {
+        if (!prev) return prev;
+        const nextBid = {
+          teamId,
+          teamName: teamName ?? "Team",
+          amount: Number(amount),
+          timestamp: optimisticAt,
+        };
+        return {
+          ...prev,
+          currentBid: Number(amount),
+          currentTeamId: teamId,
+          currentTeamName: teamName,
+          bidHistory: [...prev.bidHistory, nextBid].slice(-20),
+        };
+      },
+      false
+    );
     
     try {
       const res = await fetch(`/api/auctions/${id}/state/bid`, {
@@ -182,11 +219,13 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
       const data = await res.json();
       
       if (!res.ok) {
+        mutateState();
         setError(data.error);
       } else {
         setPendingBid(null);
         playTone(660, 80);
-        refreshAll();
+        // Revalidate only state immediately; other datasets can remain on interval.
+        mutateState();
       }
     } finally {
       setBidLoadingTeamId(null);
@@ -466,7 +505,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                       const isLeading = state.currentTeamId === team._id;
                       const bidAmount = pendingBid ?? minLegalBid;
                       const canAffordBid = team.maxBid >= bidAmount;
-                      const bidCount = state.bidHistory.filter((b) => b.teamId === team._id).length;
+                      const bidCount = bidCountByTeamId[team._id] ?? 0;
                       const canTeamBid = !isLeading;
                       
                       return (

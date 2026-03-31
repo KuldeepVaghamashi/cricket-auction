@@ -8,6 +8,19 @@ if (!MONGODB_URI) {
 
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
+let indexesReady = false;
+
+async function ensureIndexes(db: Db) {
+  if (indexesReady) return;
+  await Promise.all([
+    db.collection("auctionStates").createIndex({ auctionId: 1 }, { unique: true }),
+    db.collection("teams").createIndex({ auctionId: 1 }),
+    db.collection("players").createIndex({ auctionId: 1, status: 1 }),
+    db.collection("players").createIndex({ auctionId: 1, soldTo: 1 }),
+    db.collection("auctionLogs").createIndex({ auctionId: 1, timestamp: -1 }),
+  ]);
+  indexesReady = true;
+}
 
 export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db }> {
   if (cachedClient && cachedDb) {
@@ -24,6 +37,8 @@ export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db
   const db = client.db(dbName || "cricket_auction");
   
   console.log("[v0] Connected to database:", dbName || "cricket_auction");
+
+  await ensureIndexes(db);
 
   cachedClient = client;
   cachedDb = db;

@@ -45,8 +45,23 @@ export async function GET(
             .collection<AuctionState>("auctionStates")
             .findOne({ auctionId });
 
-          // Get teams with stats
-          const teams = await db.collection<Team>("teams").find({ auctionId }).toArray();
+          // Get teams with only required fields
+          const teams = await db
+            .collection<Team>("teams")
+            .find(
+              { auctionId },
+              {
+                projection: {
+                  _id: 1,
+                  name: 1,
+                  captainName: 1,
+                  totalBudget: 1,
+                  remainingBudget: 1,
+                  playersBought: 1,
+                },
+              }
+            )
+            .toArray();
           const teamsWithStats = teams.map((team) => ({
             _id: team._id?.toString(),
             name: team.name,
@@ -58,12 +73,15 @@ export async function GET(
             maxBid: calculateMaxBid(team, auction),
           }));
 
-          // Get current player if exists
+          // Get current player if exists (project minimal fields)
           let currentPlayer = null;
           if (state?.currentPlayerId) {
             const player = await db
               .collection<Player>("players")
-              .findOne({ _id: state.currentPlayerId });
+              .findOne(
+                { _id: state.currentPlayerId },
+                { projection: { _id: 1, name: 1, basePrice: 1 } }
+              );
             if (player) {
               currentPlayer = {
                 _id: player._id?.toString(),
@@ -73,12 +91,16 @@ export async function GET(
             }
           }
 
-          // Get player stats
-          const players = await db.collection<Player>("players").find({ auctionId }).toArray();
+          // Get player stats via indexed counts instead of full collection scan.
+          const [availableCount, soldCount, unsoldCount] = await Promise.all([
+            db.collection<Player>("players").countDocuments({ auctionId, status: "available" }),
+            db.collection<Player>("players").countDocuments({ auctionId, status: "sold" }),
+            db.collection<Player>("players").countDocuments({ auctionId, status: "unsold" }),
+          ]);
           const playerStats = {
-            available: players.filter((p) => p.status === "available").length,
-            sold: players.filter((p) => p.status === "sold").length,
-            unsold: players.filter((p) => p.status === "unsold").length,
+            available: availableCount,
+            sold: soldCount,
+            unsold: unsoldCount,
           };
 
           sendEvent({

@@ -5,6 +5,9 @@ import { isAuthenticated } from "@/lib/auth";
 import { validateBid } from "@/lib/auction-utils";
 import type { AuctionState, Team, Auction, AuctionLog } from "@/lib/types";
 
+const bidThrottleMap = new Map<string, number>();
+const BID_THROTTLE_MS = 250;
+
 // POST place bid
 export async function POST(
   request: NextRequest,
@@ -35,6 +38,19 @@ export async function POST(
     const db = await getDb();
     const auctionId = new ObjectId(id);
     const teamObjectId = new ObjectId(teamId);
+    const bidValue = Number(amount);
+    if (!Number.isFinite(bidValue)) {
+      return NextResponse.json({ error: "Invalid bid amount" }, { status: 400 });
+    }
+
+    // Server-side throttle to avoid burst clicking/floods.
+    const throttleKey = `${id}:${teamId}`;
+    const nowMs = Date.now();
+    const lastMs = bidThrottleMap.get(throttleKey) ?? 0;
+    if (nowMs - lastMs < BID_THROTTLE_MS) {
+      return NextResponse.json({ error: "Please wait a moment before bidding again" }, { status: 429 });
+    }
+    bidThrottleMap.set(throttleKey, nowMs);
 
     // Get auction
     const auction = await db
@@ -84,7 +100,7 @@ export async function POST(
 
     // Validate bid
     const isFirstBid = state.currentTeamId === null;
-    const validation = validateBid(amount, team, auction, state.currentBid, { isFirstBid });
+    const validation = validateBid(bidValue, team, auction, state.currentBid, { isFirstBid });
     if (!validation.valid) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
@@ -93,18 +109,19 @@ export async function POST(
     const bidEntry = {
       teamId: teamObjectId,
       teamName: team.name,
-      amount: Number(amount),
+      amount: bidValue,
       timestamp: new Date(),
     };
 
+    const updatedAt = new Date();
     await db.collection<AuctionState>("auctionStates").updateOne(
       { auctionId },
       {
         $set: {
-          currentBid: Number(amount),
+          currentBid: bidValue,
           currentTeamId: teamObjectId,
           currentTeamName: team.name,
-          updatedAt: new Date(),
+          updatedAt,
         },
         $push: { bidHistory: bidEntry },
       }
@@ -117,16 +134,17 @@ export async function POST(
       details: {
         teamId: team._id?.toString(),
         teamName: team.name,
-        amount: Number(amount),
+        amount: bidValue,
       },
       timestamp: new Date(),
     });
 
     return NextResponse.json({
       success: true,
-      currentBid: Number(amount),
+      currentBid: bidValue,
       currentTeamId: teamId,
       currentTeamName: team.name,
+      updatedAt: updatedAt.toISOString(),
     });
   } catch (error) {
     console.error("Bid error:", error);

@@ -10,6 +10,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const lite = request.nextUrl.searchParams.get("lite") === "1";
     
     if (!ObjectId.isValid(id)) {
       return NextResponse.json({ error: "Invalid auction ID" }, { status: 400 });
@@ -39,12 +40,51 @@ export async function GET(
       state = newState;
     }
 
-    // Get current player details if exists
+    // Get current player details if exists (project only required fields).
     let currentPlayer = null;
     if (state.currentPlayerId) {
       currentPlayer = await db
         .collection<Player>("players")
-        .findOne({ _id: state.currentPlayerId });
+        .findOne(
+          { _id: state.currentPlayerId },
+          {
+            projection: {
+              _id: 1,
+              auctionId: 1,
+              name: 1,
+              basePrice: 1,
+            },
+          }
+        );
+    }
+
+    if (lite) {
+      return NextResponse.json({
+        _id: state._id?.toString(),
+        auctionId: state.auctionId.toString(),
+        currentPlayerId: state.currentPlayerId?.toString() || null,
+        currentBid: state.currentBid,
+        currentTeamId: state.currentTeamId?.toString() || null,
+        currentTeamName: state.currentTeamName,
+        // Keep only latest 10 bid updates for fast payloads.
+        bidHistory: state.bidHistory.slice(-10).map((b) => ({
+          teamId: b.teamId.toString(),
+          teamName: b.teamName,
+          amount: b.amount,
+          timestamp: b.timestamp.toISOString(),
+        })),
+        playerTimerEndsAt: state.playerTimerEndsAt ?? null,
+        playerTimerSeconds: state.playerTimerSeconds ?? null,
+        updatedAt: state.updatedAt.toISOString(),
+        currentPlayer: currentPlayer
+          ? {
+              _id: currentPlayer._id?.toString(),
+              auctionId: currentPlayer.auctionId.toString(),
+              name: currentPlayer.name,
+              basePrice: currentPlayer.basePrice,
+            }
+          : null,
+      });
     }
 
     return NextResponse.json({
