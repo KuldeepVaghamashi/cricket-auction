@@ -257,8 +257,8 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
     <div className="min-h-screen p-4 lg:p-6">
       <div className="max-w-[1800px] mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+          <div className="flex items-center gap-3 md:gap-4">
             <Link href={`/admin/auction/${id}`}>
               <Button variant="ghost" size="icon">
                 <ArrowLeft className="h-5 w-5" />
@@ -271,7 +271,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 justify-start md:justify-end">
             <Link href={`/auction/${id}`} target="_blank" rel="noopener noreferrer">
               <Button variant="outline" className="gap-2">
                 Open Viewer
@@ -286,7 +286,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
               {viewerCopied ? "Copied" : "Copy Viewer Link"}
             </Button>
           </div>
-          <Badge variant="default" className="bg-primary animate-pulse">
+          <Badge variant="default" className="self-start md:self-auto bg-primary animate-pulse">
             LIVE
           </Badge>
         </div>
@@ -354,7 +354,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                     </div>
 
                     {/* Bid Controls */}
-                    <div className="flex items-center justify-center gap-4 mt-6">
+                    <div className="flex flex-wrap items-center justify-center gap-4 mt-6">
                       <Button
                         variant="outline"
                         size="lg"

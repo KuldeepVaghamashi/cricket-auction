@@ -300,7 +300,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
             </Card>
 
             {/* Player Stats */}
-            <div className="grid grid-cols-3 gap-4 mt-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
               <Card>
                 <CardContent className="pt-6 text-center">
                   <p className="text-3xl font-bold text-available">
