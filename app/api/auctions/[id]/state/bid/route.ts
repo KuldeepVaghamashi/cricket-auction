@@ -37,6 +37,9 @@ export async function POST(
 
     const db = await getDb();
     const auctionId = new ObjectId(id);
+    if (!ObjectId.isValid(teamId)) {
+      return NextResponse.json({ error: "Invalid team ID" }, { status: 400 });
+    }
     const teamObjectId = new ObjectId(teamId);
     const bidValue = Number(amount);
     if (!Number.isFinite(bidValue)) {
@@ -52,35 +55,59 @@ export async function POST(
     }
     bidThrottleMap.set(throttleKey, nowMs);
 
-    // Get auction
-    const auction = await db
-      .collection<Auction>("auctions")
-      .findOne({ _id: auctionId });
+    const auctionsCol = db.collection<Auction>("auctions");
+    const teamsCol = db.collection<Team>("teams");
+    const statesCol = db.collection<AuctionState>("auctionStates");
+    const logsCol = db.collection<AuctionLog>("auctionLogs");
+
+    // Fetch required documents in parallel with minimal projections.
+    const [auction, team, state] = await Promise.all([
+      auctionsCol.findOne(
+        { _id: auctionId },
+        {
+          projection: {
+            _id: 1,
+            status: 1,
+            minIncrement: 1,
+            minBid: 1,
+            maxPlayersPerTeam: 1,
+          },
+        }
+      ),
+      teamsCol.findOne(
+        { _id: teamObjectId, auctionId },
+        {
+          projection: {
+            _id: 1,
+            name: 1,
+            remainingBudget: 1,
+            playersBought: 1,
+          },
+        }
+      ),
+      statesCol.findOne(
+        { auctionId },
+        {
+          projection: {
+            currentPlayerId: 1,
+            currentBid: 1,
+            currentTeamId: 1,
+            currentTeamName: 1,
+            bidHistory: 1,
+          },
+        }
+      ),
+    ]);
 
     if (!auction) {
       return NextResponse.json({ error: "Auction not found" }, { status: 404 });
     }
-
     if (auction.status !== "active") {
-      return NextResponse.json(
-        { error: "Auction is not active" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Auction is not active" }, { status: 400 });
     }
-
-    // Get team
-    const team = await db
-      .collection<Team>("teams")
-      .findOne({ _id: teamObjectId });
-
     if (!team) {
       return NextResponse.json({ error: "Team not found" }, { status: 404 });
     }
-
-    // Get current state
-    const state = await db
-      .collection<AuctionState>("auctionStates")
-      .findOne({ auctionId });
 
     if (!state || !state.currentPlayerId) {
       return NextResponse.json(
@@ -114,7 +141,7 @@ export async function POST(
     };
 
     const updatedAt = new Date();
-    await db.collection<AuctionState>("auctionStates").updateOne(
+    await statesCol.updateOne(
       { auctionId },
       {
         $set: {
@@ -127,8 +154,8 @@ export async function POST(
       }
     );
 
-    // Log action
-    await db.collection<AuctionLog>("auctionLogs").insertOne({
+    // Non-blocking logging to keep bid latency low.
+    void logsCol.insertOne({
       auctionId,
       action: "bid_placed",
       details: {
@@ -137,6 +164,8 @@ export async function POST(
         amount: bidValue,
       },
       timestamp: new Date(),
+    }).catch((error) => {
+      console.error("Bid log insert failed:", error);
     });
 
     return NextResponse.json({
