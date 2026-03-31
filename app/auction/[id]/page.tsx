@@ -62,11 +62,15 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
   const [connected, setConnected] = useState(false);
   const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
+  // These lists change less frequently than the live SSE stream,
+  // so we can poll them less often and avoid extra load for many viewers.
   const { data: allTeams } = useSWR<TeamWithStats[]>(`/api/auctions/${id}/teams`, fetcher, {
-    refreshInterval: 3000,
+    refreshInterval: 7000,
+    revalidateOnFocus: false,
   });
   const { data: allPlayers } = useSWR<PlayerWithId[]>(`/api/auctions/${id}/players`, fetcher, {
-    refreshInterval: 3000,
+    refreshInterval: 7000,
+    revalidateOnFocus: false,
   });
 
   useEffect(() => {
