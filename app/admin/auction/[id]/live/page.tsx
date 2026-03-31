@@ -138,12 +138,24 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
 
   const handleCopyViewerLink = async () => {
     try {
-      // Always copy the current site domain so the link works
-      // on Vercel and when sharing to anyone.
-      const url =
-        typeof window !== "undefined"
-          ? `${window.location.origin}/auction/${id}`
-          : `/auction/${id}`;
+      const publicBaseUrl = process.env.NEXT_PUBLIC_VIEWER_BASE_URL?.toString() ?? "";
+
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "";
+      const hostname =
+        typeof window !== "undefined" ? window.location.hostname : "";
+
+      // If the admin is opened on a real hosted domain (Vercel/custom),
+      // always copy the current origin so it matches the deployed site.
+      const isLocal =
+        hostname === "localhost" ||
+        hostname === "127.0.0.1" ||
+        hostname.startsWith("192.168.");
+
+      const baseUrl =
+        !isLocal || !publicBaseUrl ? origin : publicBaseUrl;
+
+      const url = `${baseUrl}/auction/${id}`;
       await navigator.clipboard.writeText(url);
       setViewerCopied(true);
       window.setTimeout(() => setViewerCopied(false), 2000);
