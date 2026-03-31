@@ -205,10 +205,12 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-card sticky top-0 z-10">
-        <div className="container mx-auto px-4 h-14 flex items-center justify-between">
+        <div className="container mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Gavel className="h-6 w-6 text-primary" />
-            <h1 className="font-bold text-lg">{data.auction.name}</h1>
+            <h1 className="font-bold text-sm sm:text-lg truncate max-w-[220px] sm:max-w-none">
+              {data.auction.name}
+            </h1>
           </div>
           <Badge variant="default" className="bg-primary animate-pulse">
             LIVE
@@ -227,10 +229,10 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                   Current Player
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-6">
+              <CardContent className="p-4 sm:p-6">
                 {data.currentPlayer ? (
                   <div className="text-center">
-                    <h2 className="text-4xl lg:text-5xl font-bold mb-3">
+                    <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-3 break-words">
                       {data.currentPlayer.name}
                     </h2>
                     <Badge variant="outline" className="text-lg px-4 py-1">
@@ -255,7 +257,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                       `}
                     >
                       <p className="text-muted-foreground mb-2">Current Bid</p>
-                      <p className="text-6xl lg:text-7xl font-bold text-primary">
+                      <p className="text-4xl sm:text-6xl lg:text-7xl font-bold text-primary">
                         {data.state?.currentBid || data.currentPlayer.basePrice}
                       </p>
                       <p className="text-xl mt-4">
@@ -348,6 +350,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                       ) : soldPlayers.length === 0 ? (
                         <p className="text-sm text-muted-foreground">No players sold yet.</p>
                       ) : (
+                        <div className="overflow-x-auto">
                         <Table>
                           <TableHeader>
                             <TableRow>
@@ -370,6 +373,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                             ))}
                           </TableBody>
                         </Table>
+                        </div>
                       )}
                     </div>
                   </ScrollArea>

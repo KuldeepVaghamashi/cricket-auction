@@ -275,7 +275,7 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {auction.status === "draft" && (
               <Button onClick={handleStartAuction} className="gap-2">
                 <Play className="h-4 w-4" />
@@ -341,7 +341,7 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
 
         {/* Tabs */}
         <Tabs defaultValue="teams">
-          <TabsList>
+          <TabsList className="w-full sm:w-auto overflow-x-auto">
             <TabsTrigger value="teams" className="gap-2">
               <Users className="h-4 w-4" />
               Teams ({teams?.length || 0})

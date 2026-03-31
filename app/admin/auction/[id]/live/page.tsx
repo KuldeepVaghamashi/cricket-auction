@@ -273,7 +273,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl lg:text-2xl font-bold">{auction.name}</h1>
+              <h1 className="text-xl lg:text-2xl font-bold break-words">{auction.name}</h1>
               <p className="text-sm text-muted-foreground">
                 Live Auction Controller
               </p>
@@ -461,7 +461,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {teams.map((team) => {
                       const isLeading = state.currentTeamId === team._id;
                       const bidAmount = pendingBid ?? minLegalBid;
