@@ -214,12 +214,19 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
 
   const handleCopyViewerLink = async () => {
     try {
-      const publicBaseUrl =
-        process.env.NEXT_PUBLIC_VIEWER_BASE_URL?.toString() ?? "";
-      const url =
-        publicBaseUrl && typeof window !== "undefined"
-          ? `${publicBaseUrl}/auction/${id}`
-          : `${window.location.origin}/auction/${id}`;
+      const publicBaseUrl = process.env.NEXT_PUBLIC_VIEWER_BASE_URL?.toString() ?? "";
+
+      // When developing locally, avoid relying on a tunnel that may be down.
+      const isLocal =
+        typeof window !== "undefined" &&
+        (window.location.hostname === "localhost" ||
+          window.location.hostname === "127.0.0.1" ||
+          window.location.hostname.startsWith("192.168."));
+
+      const baseUrl =
+        isLocal || !publicBaseUrl ? window.location.origin : publicBaseUrl;
+
+      const url = `${baseUrl}/auction/${id}`;
       await navigator.clipboard.writeText(url);
       setViewerCopied(true);
       window.setTimeout(() => setViewerCopied(false), 2000);

@@ -173,6 +173,7 @@ export default function HomePage() {
       <footer className="border-t py-8 bg-card">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p>Cricket Auction App - Built for fantasy league organizers</p>
+          <p className="mt-2">Designed and developed by Kuldeep Ahir</p>
         </div>
       </footer>
     </div>

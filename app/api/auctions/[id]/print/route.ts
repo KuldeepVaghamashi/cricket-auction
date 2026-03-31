@@ -5,6 +5,7 @@ import { PassThrough } from "stream";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { Auction, Player, Team } from "@/lib/types";
+import { generateAuctionResultsPdf, type PdfTeam } from "@/lib/generateAuctionResultsPdf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,6 +65,96 @@ export async function GET(
       soldByTeam.set(teamId, list);
     }
 
+    // Use your provided dark IPL design (one page per team).
+    const getTeamShort = (name: string) => {
+      const parts = name.split(" ").filter(Boolean);
+      if (parts.length === 1) return parts[0].slice(0, 3).toUpperCase();
+      return parts.map((p) => p[0]).join("").toUpperCase();
+    };
+
+    const stableHashPdf = (s: string) => {
+      let h = 0;
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+      return h;
+    };
+
+    const THEME_PRESETS: Record<
+      string,
+      { colorPrimary: string; colorSecondary: string; colorAccent: string }
+    > = {
+      "Mumbai Warriors": {
+        colorPrimary: "#1D4ED8",
+        colorSecondary: "#0891B2",
+        colorAccent: "#1D4ED8",
+      },
+      "Chennai Super Kings": {
+        colorPrimary: "#F59E0B",
+        colorSecondary: "#EA580C",
+        colorAccent: "#F59E0B",
+      },
+    };
+
+    const THEME_FALLBACK: Array<{ colorPrimary: string; colorSecondary: string; colorAccent: string }> = [
+      { colorPrimary: "#1D4ED8", colorSecondary: "#0891B2", colorAccent: "#1D4ED8" },
+      { colorPrimary: "#F59E0B", colorSecondary: "#EA580C", colorAccent: "#F59E0B" },
+      { colorPrimary: "#7C3AED", colorSecondary: "#5B21B6", colorAccent: "#7C3AED" },
+      { colorPrimary: "#DC2626", colorSecondary: "#991B1B", colorAccent: "#DC2626" },
+      { colorPrimary: "#16A34A", colorSecondary: "#15803D", colorAccent: "#16A34A" },
+      { colorPrimary: "#0EA5E9", colorSecondary: "#0369A1", colorAccent: "#0EA5E9" },
+    ];
+
+    const getPdfTheme = (teamName: string) => {
+      if (THEME_PRESETS[teamName]) return THEME_PRESETS[teamName];
+      const idx = stableHashPdf(teamName) % THEME_FALLBACK.length;
+      return THEME_FALLBACK[idx];
+    };
+
+    const teamsSortedPdf = [...teams].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const pdfTeams: PdfTeam[] = teamsSortedPdf.map((team) => {
+      const t = team as Team;
+      const teamIdKey = t._id?.toString() ?? "";
+      const soldPlayers = (soldByTeam.get(teamIdKey) ?? []).slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+      const captainName = (t.captainName ?? "").trim();
+      const captainLower = captainName.toLowerCase();
+
+      const players = soldPlayers.map((p) => {
+        const raw = p.soldPrice as unknown;
+        const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : 0;
+        const safeN = Number.isFinite(n) ? n : 0;
+        return {
+          name: p.name,
+          price: `${safeN} pts`,
+          captain: captainLower ? p.name.toLowerCase() === captainLower : false,
+        };
+      });
+
+      const theme = getPdfTheme(t.name);
+      return {
+        name: t.name,
+        short: getTeamShort(t.name),
+        captain: captainName || "-",
+        colorPrimary: theme.colorPrimary,
+        colorSecondary: theme.colorSecondary,
+        colorAccent: theme.colorAccent,
+        players,
+      };
+    });
+
+    const pdfBufferPdf = await generateAuctionResultsPdf({
+      tournamentName: auction.name,
+      teams: pdfTeams,
+    });
+
+    const pdfBytesPdf = new Uint8Array(pdfBufferPdf);
+    return new NextResponse(pdfBytesPdf, {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="auction-${id}${teamObjectId ? `-team-${teamObjectId.toString()}` : ""}-results.pdf"`,
+        "Cache-Control": "no-store",
+      },
+    });
+
     const doc = new PDFDocument({ size: "A4", margin: 50, bufferPages: true });
     const stream = new PassThrough();
     const chunks: Buffer[] = [];
@@ -88,16 +179,75 @@ export async function GET(
     const contentWidth = () => page().width - doc.page.margins.left - doc.page.margins.right;
     const x0 = () => doc.page.margins.left;
 
-    const COLORS = {
-      ink: "#0F172A",
-      muted: "#475569",
-      border: "#E2E8F0",
-      soft: "#F1F5F9",
+    const BASE_COLORS = {
+      // Page & text colors (dark theme like your sample)
+      background: "#0B1220",
+      ink: "#E5E7EB",
+      muted: "#94A3B8",
+      border: "#263244",
+      soft: "#0F172A",
       brand: "#0F766E",
-      brandSoft: "#CCFBF1",
-      tableHeader: "#0B2F2D",
-      tableRowAlt: "#F8FAFC",
-    } as const;
+      brandSoft: "#0B2F2D",
+      tableHeader: "#0F172A",
+      tableRowAlt: "#0B1220",
+
+      // Accent
+      bidGreen: "#22C55E",
+    };
+
+    const TEAM_THEMES: Record<string, Partial<typeof BASE_COLORS>> = {
+      // Known sample themes (to match your provided design)
+      "Mumbai Warriors": {
+        brand: "#1D4ED8",
+      },
+      "Chennai Super Kings": {
+        brand: "#F59E0B",
+      },
+    };
+
+    // Fallback: assign a deterministic theme for any team name.
+    const THEME_PALETTE: Array<Partial<typeof BASE_COLORS>> = [
+      { brand: "#1D4ED8" },
+      { brand: "#F59E0B" },
+      { brand: "#7C3AED" },
+      { brand: "#DC2626" },
+      { brand: "#0891B2" },
+      { brand: "#16A34A" },
+    ];
+
+    const stableHash = (s: string) => {
+      let h = 0;
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+      return h;
+    };
+
+    const getColorsForTeam = (teamName?: string) => {
+      const preset = teamName ? TEAM_THEMES[teamName] : undefined;
+      if (preset) return { ...BASE_COLORS, ...preset };
+      const idx = teamName ? stableHash(teamName) % THEME_PALETTE.length : 0;
+      return { ...BASE_COLORS, ...THEME_PALETTE[idx] };
+    };
+
+    // Header/stat section: only use a team theme if teamId is provided.
+    const headerTeamName = teamObjectId && teams.length > 0 ? teams[0]?.name : undefined;
+
+    let COLORS = getColorsForTeam(headerTeamName);
+
+    const drawPageBackground = () => {
+      doc.save();
+      doc.rect(0, 0, page().width, page().height).fill(COLORS.background);
+      doc.restore();
+    };
+
+    // Ensure every new page also has the dark background.
+    doc.on("pageAdded", () => {
+      // When pdfkit switches pages, our helpers will continue to use updated `doc.page`.
+      drawPageBackground();
+      // Reset the Y position so subsequent drawing starts at the expected margin.
+      doc.y = doc.page.margins.top;
+    });
+    // First page background
+    drawPageBackground();
 
     const ensureSpace = (minHeight: number) => {
       const bottom = page().height - doc.page.margins.bottom;
@@ -122,27 +272,62 @@ export async function GET(
       return v;
     };
 
-    const drawHeader = () => {
-      const headerH = 76;
-      const y = 0;
-      doc.save();
-      doc.rect(0, y, page().width, headerH).fill(COLORS.brand);
+    const getTeamCode = (name?: string) => {
+      if (!name) return "";
+      const parts = name.split(" ").filter(Boolean);
+      if (parts.length === 1) return parts[0].slice(0, 3).toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    };
 
+    const drawHeader = () => {
+      const headerH = 110;
+      const y = 0;
+      const teamName = headerTeamName;
+      const teamCode = getTeamCode(teamName);
+
+      doc.save();
+      // Sample-like: dark header + top accent stripe
+      doc.rect(0, y, page().width, 16).fill(COLORS.brand);
+      doc.rect(0, y, page().width, headerH).fill(COLORS.background);
+
+      // Small tournament label
       doc
         .fillColor("white")
-        .fontSize(22)
-        .text(teamObjectId ? "Team Auction Results" : "Cricket Auction Results", x0(), 24, {
+        .fontSize(10)
+        .text("IPL Mega Auction 2025", x0(), 22, {
           width: contentWidth(),
-          align: "left",
+          align: "center",
         });
 
+      // Big centered team / auction title
       doc
         .fillColor("white")
-        .fontSize(11)
-        .text(auction.name, x0(), 50, { width: contentWidth(), align: "left" });
+        .fontSize(24)
+        .text(teamName || auction!.name, x0(), 40, {
+          width: contentWidth(),
+          align: "center",
+        });
+
+      // Centered pill with team code (MW / CSK style)
+      if (teamCode) {
+        const pillW = 60;
+        const pillH = 22;
+        const centerX = x0() + contentWidth() / 2 - pillW / 2;
+        const pillY = 74;
+        doc
+          .roundedRect(centerX, pillY, pillW, pillH, 6)
+          .fillColor(COLORS.brand)
+          .strokeColor("white")
+          .lineWidth(1)
+          .stroke();
+        doc
+          .fillColor(COLORS.background)
+          .fontSize(11)
+          .text(teamCode, centerX, pillY + 5, { width: pillW, align: "center" });
+      }
 
       doc.restore();
-      doc.y = headerH + 18;
+      doc.y = headerH + 24;
     };
 
     const drawInfoRow = (left: string, right: string) => {
@@ -192,9 +377,13 @@ export async function GET(
       const y = doc.y;
       const h = 34;
       doc.save();
-      doc.roundedRect(x0(), y, contentWidth(), h, 10).fill(COLORS.brandSoft);
-      doc.roundedRect(x0(), y, contentWidth(), h, 10).lineWidth(1).strokeColor(COLORS.border).stroke();
-      doc.fillColor(COLORS.tableHeader).fontSize(13).text(teamName, x0() + 14, y + 10, {
+      doc
+        .roundedRect(x0(), y, contentWidth(), h, 10)
+        .fill(COLORS.soft)
+        .strokeColor(COLORS.brand)
+        .lineWidth(1.2)
+        .stroke();
+      doc.fillColor("white").fontSize(13).text(teamName, x0() + 14, y + 10, {
         width: contentWidth() - 28,
       });
       doc.restore();
@@ -223,22 +412,34 @@ export async function GET(
       doc.y = Math.max(leftY, rightY) + 2;
     };
 
-    const drawPlayersTable = (players: Array<{ name: string; points: number }>) => {
+    const drawPlayersTable = (players: Array<{ name: string; price: number }>) => {
       const tableX = x0();
       const tableW = contentWidth();
       const rowH = 22;
       const headerH = 24;
-      const colNameW = Math.floor(tableW * 0.72);
-      const colPtsW = tableW - colNameW;
+      const colIndexW = Math.floor(tableW * 0.08);
+      const colNameW = Math.floor(tableW * 0.6);
+      const colBidW = tableW - colIndexW - colNameW;
 
       // Header
       ensureSpace(headerH + rowH * Math.min(players.length, 3) + 20);
       const y0 = doc.y;
       doc.save();
-      doc.roundedRect(tableX, y0, tableW, headerH, 8).fill(COLORS.tableHeader);
+      doc
+        .roundedRect(tableX, y0, tableW, headerH, 8)
+        .fill(COLORS.tableHeader)
+        .strokeColor(COLORS.brand)
+        .lineWidth(1)
+        .stroke();
       doc.fillColor("white").fontSize(10);
-      doc.text("Player", tableX + 10, y0 + 7, { width: colNameW - 20 });
-      doc.text("Points", tableX + colNameW, y0 + 7, { width: colPtsW - 10, align: "right" });
+      doc.text("#", tableX + 8, y0 + 7, { width: colIndexW - 12 });
+      doc.text("Player Name", tableX + colIndexW, y0 + 7, {
+        width: colNameW - 16,
+      });
+      doc.text("Bid Points", tableX + colIndexW + colNameW, y0 + 7, {
+        width: colBidW - 10,
+        align: "right",
+      });
       doc.restore();
 
       let y = y0 + headerH;
@@ -257,8 +458,16 @@ export async function GET(
           .strokeColor(COLORS.border)
           .stroke();
         doc.fillColor(COLORS.ink).fontSize(10);
-        doc.text(p.name, tableX + 10, y + 6, { width: colNameW - 20 });
-        doc.text(`${p.points}`, tableX + colNameW, y + 6, { width: colPtsW - 10, align: "right" });
+        doc.text(`${i + 1}`, tableX + 8, y + 6, { width: colIndexW - 12 });
+        doc.text(p.name, tableX + colIndexW, y + 6, {
+          width: colNameW - 16,
+        });
+        doc.fillColor(COLORS.bidGreen);
+        doc.text(`${p.price} pts`, tableX + colIndexW + colNameW, y + 6, {
+          width: colBidW - 10,
+          align: "right",
+        });
+        doc.fillColor(COLORS.ink);
         doc.restore();
 
         y += rowH;
@@ -270,31 +479,47 @@ export async function GET(
 
     // -------- Cover / Summary --------
     drawHeader();
-    drawInfoRow(`Date: ${formatDateTime(new Date(auction.date))}`, `Generated: ${formatDateTime(new Date())}`);
+    drawInfoRow(
+      `Date: ${formatDateTime(new Date(auction!.date))}`,
+      `Generated: ${formatDateTime(new Date())}`
+    );
 
     const totalSold = playersSold.length;
-    const totalSoldPoints = playersSold.reduce((sum, p) => sum + (typeof p.soldPrice === "number" ? p.soldPrice : 0), 0);
+    const totalSoldPoints = playersSold.reduce((sum, p) => {
+      const raw = p.soldPrice as unknown;
+      const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : 0;
+      return sum + (Number.isFinite(n) ? n : 0);
+    }, 0);
     drawStatCards(
       teamObjectId
         ? [
             { label: "Sold Players", value: `${totalSold}` },
-            { label: "Points Spent", value: `${totalSoldPoints}` },
-            { label: "Report", value: "Team wise" },
+            { label: "Bid Points", value: `${totalSoldPoints}` },
           ]
         : [
             { label: "Teams", value: `${teams.length}` },
             { label: "Sold Players", value: `${totalSold}` },
-            { label: "Total Points Spent", value: `${totalSoldPoints}` },
+            { label: "Total Bid Points", value: `${totalSoldPoints}` },
           ]
     );
 
-    drawSectionTitle(teamObjectId ? "Team Summary" : "Teams Summary", "Players bought list with points and remaining budget");
+    // In team-wise PDF, the team header + table already provides context.
+    // Skipping this title improves alignment and matches your requested look.
+    if (!teamObjectId) {
+      drawSectionTitle(
+        "Teams Summary",
+        "Players bought list with bid price and remaining budget"
+      );
+    }
 
     // Stable order for PDF
     const teamsSorted = [...teams].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
     for (const team of teamsSorted) {
       const t = team as TeamLike;
+      // Apply per-team theme so every team section has different colors.
+      COLORS = getColorsForTeam(team.name);
+
       const remainingBudget =
         typeof t.remainingBudget === "number" ? t.remainingBudget : 0;
       const playersBoughtCount = Array.isArray(t.playersBought)
@@ -320,16 +545,29 @@ export async function GET(
 
       const rows = [...soldPlayers]
         .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
-        .map((p) => ({ name: p.name, points: typeof p.soldPrice === "number" ? p.soldPrice : 0 }));
+        .map((p) => {
+          const raw = p.soldPrice as unknown;
+          const n =
+            typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : 0;
+          return { name: p.name, price: Number.isFinite(n) ? n : 0 };
+        });
       drawPlayersTable(rows);
 
-      const teamSpent = rows.reduce((s, r) => s + r.points, 0);
+      const teamSpent = rows.reduce((s, r) => s + r.price, 0);
       doc.save();
-      doc.fillColor(COLORS.muted).fontSize(10).text(`Team spent: ${teamSpent} pts`, { align: "right" });
+      doc
+        .fillColor(COLORS.ink)
+        .fontSize(11)
+        .text(`Total Bid Points: ${teamSpent}`, {
+          align: "right",
+        });
       doc.restore();
       doc.moveDown(0.8);
       hr(6);
     }
+
+    // Reset to default before footer (avoid "last team" color leak).
+    COLORS = BASE_COLORS;
 
     // -------- Footer with page numbers --------
     const range = doc.bufferedPageRange();
@@ -344,7 +582,7 @@ export async function GET(
         .strokeColor(COLORS.border)
         .stroke();
       doc.fillColor(COLORS.muted).fontSize(9);
-      doc.text(auction.name, x0(), footerY, { width: contentWidth() / 2, align: "left" });
+      doc.text(auction!.name, x0(), footerY, { width: contentWidth() / 2, align: "left" });
       doc.text(`Page ${i - range.start + 1} / ${range.count}`, x0() + contentWidth() / 2, footerY, {
         width: contentWidth() / 2,
         align: "right",
