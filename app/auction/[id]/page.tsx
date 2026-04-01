@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use, useMemo } from "react";
+import { useState, useEffect, useRef, use, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -65,29 +65,41 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
 
   const auctionReady = Boolean(auctionMeta) && !auctionErr;
   const isActive = auctionMeta?.status === "active";
-  const listRefreshMs = isActive ? 2000 : 8000;
+  // Teams/players change on sold/unsold — poll infrequently; mutate on player change too.
+  const listRefreshMs = isActive ? 15000 : 8000;
 
   const { data: stateLite, error: stateErr } = useSWR<AuctionStateLite>(
     auctionReady ? `/api/auctions/${id}/state?lite=1` : null,
     jsonFetcher,
     {
-      // Fast polling while live so viewers see bids in near real time (HTTP; reliable on Vercel vs SSE buffering).
-      refreshInterval: isActive ? 500 : 0,
-      dedupingInterval: 250,
+      // Live bids: fast poll on this endpoint only (teams/players stay quiet).
+      refreshInterval: isActive ? 900 : 0,
+      dedupingInterval: 400,
       revalidateOnFocus: true,
     }
   );
 
-  const { data: allTeams } = useSWR<TeamWithStats[]>(
+  const { data: allTeams, mutate: mutateTeams } = useSWR<TeamWithStats[]>(
     `/api/auctions/${id}/teams`,
     jsonFetcher,
     { refreshInterval: listRefreshMs, revalidateOnFocus: true }
   );
-  const { data: allPlayers } = useSWR<PlayerWithId[]>(
+  const { data: allPlayers, mutate: mutatePlayers } = useSWR<PlayerWithId[]>(
     `/api/auctions/${id}/players`,
     jsonFetcher,
     { refreshInterval: listRefreshMs, revalidateOnFocus: true }
   );
+
+  const prevPlayerIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!stateLite || !isActive) return;
+    const pid = stateLite.currentPlayerId;
+    if (prevPlayerIdRef.current !== null && pid !== prevPlayerIdRef.current) {
+      void mutateTeams();
+      void mutatePlayers();
+    }
+    prevPlayerIdRef.current = pid;
+  }, [stateLite?.currentPlayerId, isActive, mutateTeams, mutatePlayers]);
 
   const [nowMs, setNowMs] = useState(Date.now());
 
