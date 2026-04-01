@@ -166,74 +166,82 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     };
 
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <Card className="w-full max-w-4xl">
-          <CardHeader className="text-center">
-            <Gavel className="h-12 w-12 mx-auto text-primary mb-4" />
-            <CardTitle>{data.auction.name}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col items-center text-center gap-3">
-              <Badge variant="outline" className="text-lg px-4 py-2">
-                {data.auction.status === "draft" ? "Auction Not Started" : "Auction Completed"}
-              </Badge>
-              {hasStartsAt && (
-                <div className="flex flex-col items-center gap-1">
-                  <p className="text-sm text-muted-foreground">Scheduled Start</p>
-                  <p className="font-semibold">
-                    {new Date(startsAtMs).toLocaleString()}
-                  </p>
-                </div>
-              )}
-              {isDraft && (
-                <Badge variant={hasCountdown ? "default" : "secondary"} className="text-base px-4 py-2">
-                  {hasCountdown
-                    ? `Starts in: ${formatCountdown(msRemaining)}`
-                    : "Starting soon"}
+      <div className="min-h-screen flex flex-col">
+        <div className="flex-1 flex items-center justify-center p-4">
+          <Card className="w-full max-w-4xl">
+            <CardHeader className="text-center">
+              <Gavel className="h-12 w-12 mx-auto text-primary mb-4" />
+              <CardTitle>{data.auction.name}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col items-center text-center gap-3">
+                <Badge variant="outline" className="text-lg px-4 py-2">
+                  {data.auction.status === "draft" ? "Auction Not Started" : "Auction Completed"}
                 </Badge>
-              )}
-              <p className="text-muted-foreground">
-                {data.auction.status === "draft"
-                  ? "The auction has not started yet. Please wait for the auctioneer to begin."
-                  : "This auction has been completed. Here are the sold results."}
-              </p>
-            </div>
+                {hasStartsAt && (
+                  <div className="flex flex-col items-center gap-1">
+                    <p className="text-sm text-muted-foreground">Scheduled Start</p>
+                    <p className="font-semibold">
+                      {new Date(startsAtMs).toLocaleString()}
+                    </p>
+                  </div>
+                )}
+                {isDraft && (
+                  <Badge variant={hasCountdown ? "default" : "secondary"} className="text-base px-4 py-2">
+                    {hasCountdown
+                      ? `Starts in: ${formatCountdown(msRemaining)}`
+                      : "Starting soon"}
+                  </Badge>
+                )}
+                <p className="text-muted-foreground">
+                  {data.auction.status === "draft"
+                    ? "The auction has not started yet. Please wait for the auctioneer to begin."
+                    : "This auction has been completed. Here are the sold results."}
+                </p>
+              </div>
 
-            <div className="mt-6">
-              <h3 className="text-lg font-semibold mb-3">Sold Players</h3>
-              {!allPlayers || !allTeams ? (
-                <p className="text-sm text-muted-foreground">Loading results...</p>
-              ) : soldPlayers.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No players were sold.</p>
-              ) : (
-                <ScrollArea className="h-[360px]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Player</TableHead>
-                        <TableHead>Sold To</TableHead>
-                        <TableHead className="text-right">Points</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {soldPlayers.map((p) => (
-                        <TableRow key={p._id}>
-                          <TableCell className="font-medium">{p.name}</TableCell>
-                          <TableCell>
-                            {p.soldTo ? teamNameById.get(p.soldTo) ?? "-" : "-"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {typeof p.soldPrice === "number" ? p.soldPrice : "-"}
-                          </TableCell>
+              <div className="mt-6">
+                <h3 className="text-lg font-semibold mb-3">Sold Players</h3>
+                {!allPlayers || !allTeams ? (
+                  <p className="text-sm text-muted-foreground">Loading results...</p>
+                ) : soldPlayers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No players were sold.</p>
+                ) : (
+                  <ScrollArea className="h-[360px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Player</TableHead>
+                          <TableHead>Sold To</TableHead>
+                          <TableHead className="text-right">Points</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                      </TableHeader>
+                      <TableBody>
+                        {soldPlayers.map((p) => (
+                          <TableRow key={p._id}>
+                            <TableCell className="font-medium">{p.name}</TableCell>
+                            <TableCell>
+                              {p.soldTo ? teamNameById.get(p.soldTo) ?? "-" : "-"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {typeof p.soldPrice === "number" ? p.soldPrice : "-"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <footer className="border-t py-6 bg-card">
+          <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
+            <p>Designed and Developed By Kuldeep Ahir</p>
+          </div>
+        </footer>
       </div>
     );
   }
@@ -254,7 +262,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     : [];
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="border-b bg-card sticky top-0 z-10">
         <div className="container mx-auto px-4 h-14 flex items-center justify-between gap-3">
@@ -270,7 +278,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6">
+      <main className="container mx-auto px-4 py-6 flex-1">
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Main Section - Current Player */}
           <div className="lg:col-span-2">
@@ -490,6 +498,12 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
       </main>
+
+      <footer className="border-t py-6 bg-card">
+        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
+          <p>Designed and Developed By Kuldeep Ahir</p>
+        </div>
+      </footer>
 
       <Dialog open={!!selectedTeamId} onOpenChange={(open) => !open && setSelectedTeamId(null)}>
         <DialogContent className="max-w-2xl">

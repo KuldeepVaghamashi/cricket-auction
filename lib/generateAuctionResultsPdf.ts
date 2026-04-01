@@ -160,7 +160,8 @@ function drawHeader(doc: PDFDocument, team: PdfTeam, tournamentName: string) {
   const badgeW = Math.min(bw - 80, Math.max(120, badgeTextW + 40));
   const badgeH = 38;
   const badgeX = A4_W / 2 - badgeW / 2;
-  const badgeY = MARGIN + 96;
+  // Move badge closer to divider for tighter header spacing.
+  const badgeY = MARGIN + 84;
   roundedRect(doc, badgeX, badgeY, badgeW, badgeH, 8, team.colorPrimary);
   centredText(doc, badgeText, badgeY + 11, "Helvetica-Bold", badgeFontSize, "#FFFFFF");
 }

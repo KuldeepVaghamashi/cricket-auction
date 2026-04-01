@@ -71,6 +71,12 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
     id: string;
     name: string;
   } | null>(null);
+  const [assignDialog, setAssignDialog] = useState<{
+    open: boolean;
+    teamId: string | null;
+    teamName: string | null;
+  }>({ open: false, teamId: null, teamName: null });
+  const [assignPlayerId, setAssignPlayerId] = useState<string>("");
 
   const handleAddTeam = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -262,6 +268,32 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
     selectedTeamForSold && players
       ? players.filter((p) => p.status === "sold" && p.soldTo === selectedTeamForSold.id)
       : [];
+
+  const handleAssignPlayerToTeam = async () => {
+    if (!assignDialog.teamId || !assignPlayerId) return;
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `/api/auctions/${id}/teams/${assignDialog.teamId}/assign-player`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ playerId: assignPlayerId }),
+        }
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        alert(data?.error || "Failed to assign player");
+        return;
+      }
+      setAssignDialog({ open: false, teamId: null, teamName: null });
+      setAssignPlayerId("");
+      mutateTeams();
+      mutatePlayers();
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -477,6 +509,21 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                             {auction.status === "draft" && (
                               <TableCell className="text-right">
                                 <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="mr-2"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAssignDialog({
+                                      open: true,
+                                      teamId: team._id,
+                                      teamName: team.name,
+                                    });
+                                  }}
+                                >
+                                  Assign Player
+                                </Button>
+                                <Button
                                   variant="ghost"
                                   size="icon"
                                   onClick={(e) => {
@@ -670,6 +717,62 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                     ))}
                   </TableBody>
                 </Table>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={assignDialog.open}
+          onOpenChange={(open) => {
+            if (!open) {
+              setAssignDialog({ open: false, teamId: null, teamName: null });
+              setAssignPlayerId("");
+            }
+          }}
+        >
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>
+                Assign player to {assignDialog.teamName ?? "team"}
+              </DialogTitle>
+              <DialogDescription>
+                This works only before the auction starts (Draft).
+              </DialogDescription>
+            </DialogHeader>
+
+            {auction?.status !== "draft" ? (
+              <p className="text-sm text-muted-foreground">
+                Player assignment is disabled because the auction is not in Draft.
+              </p>
+            ) : availablePlayers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No available players in the pool.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="assignPlayer">Select Player</Label>
+                  <select
+                    id="assignPlayer"
+                    className="h-10 rounded-md border bg-background px-3 text-sm"
+                    value={assignPlayerId}
+                    onChange={(e) => setAssignPlayerId(e.target.value)}
+                  >
+                    <option value="">Choose a player</option>
+                    {availablePlayers.map((p) => (
+                      <option key={p._id} value={p._id}>
+                        {p.name} (Base: {p.basePrice} pts)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <Button
+                  onClick={handleAssignPlayerToTeam}
+                  disabled={loading || !assignPlayerId || !assignDialog.teamId}
+                >
+                  {loading ? "Assigning..." : "Assign to Team"}
+                </Button>
               </div>
             )}
           </DialogContent>
