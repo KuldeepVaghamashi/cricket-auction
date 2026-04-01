@@ -151,16 +151,17 @@ function drawHeader(doc: PDFDocument, team: PdfTeam, tournamentName: string) {
   doc.stroke();
   doc.restore();
 
-  // Team name
-  centredText(doc, team.name.toUpperCase(), MARGIN + 68, "Helvetica-Bold", 26, "#FFFFFF");
-
-  // Short-code badge
-  const badgeW = 62;
-  const badgeH = 28;
+  // Remove duplicated team name in the header and show it only once
+  // in a larger, well-sized badge (matches your sample requirement).
+  const badgeText = (team.name || team.short).toUpperCase();
+  doc.font("Helvetica-Bold").fontSize(13);
+  const badgeTextW = doc.widthOfString(badgeText);
+  const badgeW = Math.min(bw - 80, Math.max(110, badgeTextW + 34));
+  const badgeH = 34;
   const badgeX = A4_W / 2 - badgeW / 2;
-  const badgeY = MARGIN + 106;
-  roundedRect(doc, badgeX, badgeY, badgeW, badgeH, 6, team.colorPrimary);
-  centredText(doc, team.short, badgeY + 8, "Helvetica-Bold", 11, "#FFFFFF");
+  const badgeY = MARGIN + 96;
+  roundedRect(doc, badgeX, badgeY, badgeW, badgeH, 8, team.colorPrimary);
+  centredText(doc, badgeText, badgeY + 10, "Helvetica-Bold", 13, "#FFFFFF");
 }
 
 function drawCaptainBanner(doc: PDFDocument, team: PdfTeam) {
