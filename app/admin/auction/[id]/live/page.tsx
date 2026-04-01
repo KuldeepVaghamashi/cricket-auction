@@ -67,7 +67,8 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   const { data: state, mutate: mutateState } = useSWR<AuctionStateResponse>(
     `/api/auctions/${id}/state?lite=1`,
     fetcher,
-    { refreshInterval: 1200, revalidateOnFocus: false }
+    // No refreshInterval: updates come from mutate() after admin actions (bid, pick, etc.).
+    { revalidateOnFocus: true }
   );
   const { data: logs, mutate: mutateLogs } = useSWR<AuctionLogResponse[]>(
     `/api/auctions/${id}/logs`,
