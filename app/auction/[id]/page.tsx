@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,132 +23,139 @@ import {
 } from "@/components/ui/dialog";
 import type { AuctionWithId, PlayerWithId, TeamWithStats } from "@/lib/types";
 
-interface StreamData {
-  auction: {
-    _id: string;
-    name: string;
-    status: string;
-    minIncrement: number;
-    maxPlayersPerTeam: number;
-  };
-  state: {
-    currentBid: number;
-    currentTeamId: string | null;
-    currentTeamName: string | null;
-    bidHistory: Array<{ teamName: string; amount: number }>;
-  } | null;
+interface AuctionStateLite {
+  _id: string;
+  auctionId: string;
+  currentPlayerId: string | null;
+  currentBid: number;
+  currentTeamId: string | null;
+  currentTeamName: string | null;
+  bidHistory: Array<{
+    teamId: string;
+    teamName: string;
+    amount: number;
+    timestamp: string;
+  }>;
+  updatedAt: string;
   currentPlayer: {
     _id: string;
     name: string;
     basePrice: number;
   } | null;
-  teams: Array<{
-    _id: string;
-    name: string;
-    captainName?: string;
-    totalBudget: number;
-    remainingBudget: number;
-    playersCount: number;
-    remainingSlots: number;
-    maxBid: number;
-  }>;
-  playerStats: {
-    available: number;
-    sold: number;
-    unsold: number;
-  };
-  timestamp: string;
-  error?: string;
 }
+
+const jsonFetcher = async <T,>(url: string): Promise<T> => {
+  const res = await fetch(url);
+  const data = await res.json();
+  if (!res.ok) {
+    const msg = typeof data.error === "string" ? data.error : "Request failed";
+    throw new Error(msg);
+  }
+  return data as T;
+};
 
 export default function AuctionViewerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [data, setData] = useState<StreamData | null>(null);
-  const [connected, setConnected] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
-  const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-  // These lists change less frequently than the live SSE stream,
-  // so we can poll them less often and avoid extra load for many viewers.
-  const { data: allTeams } = useSWR<TeamWithStats[]>(`/api/auctions/${id}/teams`, fetcher, {
-    refreshInterval: 7000,
-    revalidateOnFocus: false,
-  });
-  const { data: allPlayers } = useSWR<PlayerWithId[]>(`/api/auctions/${id}/players`, fetcher, {
-    refreshInterval: 7000,
-    revalidateOnFocus: false,
-  });
-  const { data: auctionMeta } = useSWR<AuctionWithId>(`/api/auctions/${id}`, fetcher, {
-    refreshInterval: 30000,
-    revalidateOnFocus: false,
-  });
+  const { data: auctionMeta, error: auctionErr, isLoading: auctionLoading } = useSWR<AuctionWithId>(
+    `/api/auctions/${id}`,
+    jsonFetcher
+  );
+
+  const auctionReady = Boolean(auctionMeta) && !auctionErr;
+  const isActive = auctionMeta?.status === "active";
+  const listRefreshMs = isActive ? 2000 : 8000;
+
+  const { data: stateLite, error: stateErr } = useSWR<AuctionStateLite>(
+    auctionReady ? `/api/auctions/${id}/state?lite=1` : null,
+    jsonFetcher,
+    {
+      // Fast polling while live so viewers see bids in near real time (HTTP; reliable on Vercel vs SSE buffering).
+      refreshInterval: isActive ? 500 : 0,
+      dedupingInterval: 250,
+      revalidateOnFocus: true,
+    }
+  );
+
+  const { data: allTeams } = useSWR<TeamWithStats[]>(
+    `/api/auctions/${id}/teams`,
+    jsonFetcher,
+    { refreshInterval: listRefreshMs, revalidateOnFocus: true }
+  );
+  const { data: allPlayers } = useSWR<PlayerWithId[]>(
+    `/api/auctions/${id}/players`,
+    jsonFetcher,
+    { refreshInterval: listRefreshMs, revalidateOnFocus: true }
+  );
+
   const [nowMs, setNowMs] = useState(Date.now());
-
-  useEffect(() => {
-    const eventSource = new EventSource(`/api/auctions/${id}/stream`);
-
-    eventSource.onopen = () => {
-      setConnected(true);
-    };
-
-    eventSource.onmessage = (event) => {
-      try {
-        const parsed = JSON.parse(event.data);
-        setData(parsed);
-      } catch (e) {
-        console.error("Failed to parse SSE data:", e);
-      }
-    };
-
-    eventSource.onerror = () => {
-      setConnected(false);
-    };
-
-    return () => {
-      eventSource.close();
-    };
-  }, [id]);
 
   useEffect(() => {
     const t = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(t);
   }, []);
 
-  if (!data) {
+  const playerStats = useMemo(() => {
+    if (!allPlayers) return { available: 0, sold: 0, unsold: 0 };
+    return {
+      available: allPlayers.filter((p) => p.status === "available").length,
+      sold: allPlayers.filter((p) => p.status === "sold").length,
+      unsold: allPlayers.filter((p) => p.status === "unsold").length,
+    };
+  }, [allPlayers]);
+
+  const loadingInitial =
+    (auctionLoading && !auctionErr) || (auctionReady && stateLite === undefined && !stateErr);
+
+  if (loadingInitial) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-pulse text-muted-foreground mb-2">
-            Connecting to auction...
-          </div>
-          {!connected && (
-            <p className="text-sm text-muted-foreground">
-              Please wait while we establish connection
-            </p>
-          )}
+          <div className="animate-pulse text-muted-foreground mb-2">Loading auction...</div>
         </div>
       </div>
     );
   }
 
-  if (data.error) {
+  if (auctionErr || !auctionMeta) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Card className="max-w-md">
           <CardContent className="pt-6 text-center">
-            <p className="text-destructive">{data.error}</p>
+            <p className="text-destructive">{auctionErr?.message ?? "Auction not found"}</p>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  if (data.auction.status !== "active") {
+  if (stateErr) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="max-w-md">
+          <CardContent className="pt-6 text-center">
+            <p className="text-destructive">{stateErr.message}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!stateLite) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center text-muted-foreground">Loading auction state...</div>
+      </div>
+    );
+  }
+
+  if (auctionMeta.status !== "active") {
     const teamNameById = new Map<string, string>(
       (allTeams ?? []).map((t) => [t._id, t.name])
     );
     const soldPlayers = (allPlayers ?? []).filter((p) => p.status === "sold");
-    const isDraft = data.auction.status === "draft";
+    const isDraft = auctionMeta.status === "draft";
 
     const startsAtMs = auctionMeta?.date ? new Date(auctionMeta.date).getTime() : NaN;
     const hasStartsAt = Number.isFinite(startsAtMs);
@@ -171,12 +178,12 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
           <Card className="w-full max-w-4xl">
             <CardHeader className="text-center">
               <Gavel className="h-12 w-12 mx-auto text-primary mb-4" />
-              <CardTitle>{data.auction.name}</CardTitle>
+              <CardTitle>{auctionMeta.name}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-col items-center text-center gap-3">
                 <Badge variant="outline" className="text-lg px-4 py-2">
-                  {data.auction.status === "draft" ? "Auction Not Started" : "Auction Completed"}
+                  {auctionMeta.status === "draft" ? "Auction Not Started" : "Auction Completed"}
                 </Badge>
                 {hasStartsAt && (
                   <div className="flex flex-col items-center gap-1">
@@ -194,7 +201,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                   </Badge>
                 )}
                 <p className="text-muted-foreground">
-                  {data.auction.status === "draft"
+                  {auctionMeta.status === "draft"
                     ? "The auction has not started yet. Please wait for the auctioneer to begin."
                     : "This auction has been completed. Here are the sold results."}
                 </p>
@@ -247,7 +254,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
   }
 
   const recentBidCounts: Record<string, number> = {};
-  (data.state?.bidHistory ?? []).forEach((b) => {
+  (stateLite.bidHistory ?? []).forEach((b) => {
     recentBidCounts[b.teamName] = (recentBidCounts[b.teamName] ?? 0) + 1;
   });
 
@@ -269,7 +276,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
           <div className="flex items-center gap-3">
             <Gavel className="h-6 w-6 text-primary" />
             <h1 className="font-bold text-sm sm:text-lg truncate max-w-[220px] sm:max-w-none">
-              {data.auction.name}
+              {auctionMeta.name}
             </h1>
           </div>
           <Badge variant="default" className="bg-primary animate-pulse">
@@ -290,30 +297,30 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4 sm:p-6">
-                {data.currentPlayer ? (
+                {stateLite.currentPlayer ? (
                   <div className="text-center">
                     <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-3 break-words">
-                      {data.currentPlayer.name}
+                      {stateLite.currentPlayer.name}
                     </h2>
                     <Badge variant="outline" className="text-lg px-4 py-1">
-                      Base: {data.currentPlayer.basePrice} pts
+                      Base: {stateLite.currentPlayer.basePrice} pts
                     </Badge>
 
                     {/* Current Bid Display */}
                     <div
                       className={`
                         mt-8 p-8 rounded-xl transition-glow
-                        ${data.state?.currentTeamId ? "bg-primary/10 glow-primary" : "bg-secondary"}
+                        ${stateLite.currentTeamId ? "bg-primary/10 glow-primary" : "bg-secondary"}
                       `}
                     >
                       <p className="text-muted-foreground mb-2">Current Bid</p>
                       <p className="text-4xl sm:text-6xl lg:text-7xl font-bold text-primary">
-                        {data.state?.currentBid || data.currentPlayer.basePrice}
+                        {stateLite.currentBid || stateLite.currentPlayer.basePrice}
                       </p>
                       <p className="text-xl mt-4">
-                        {data.state?.currentTeamName ? (
+                        {stateLite.currentTeamName ? (
                           <span className="text-primary font-semibold">
-                            {data.state.currentTeamName}
+                            {stateLite.currentTeamName}
                           </span>
                         ) : (
                           <span className="text-muted-foreground">Waiting for bids...</span>
@@ -322,13 +329,13 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     </div>
 
                     {/* Bid History */}
-                    {data.state?.bidHistory && data.state.bidHistory.length > 0 && (
+                    {stateLite.bidHistory && stateLite.bidHistory.length > 0 && (
                       <div className="mt-6">
                         <p className="text-sm text-muted-foreground mb-3">Recent Bids</p>
                         <div className="flex flex-wrap justify-center gap-2">
-                          {[...data.state.bidHistory].reverse().slice(0, 5).map((bid, i) => (
+                          {[...stateLite.bidHistory].reverse().slice(0, 5).map((bid, i) => (
                             <Badge
-                              key={i}
+                              key={`${bid.timestamp}-${i}`}
                               variant={i === 0 ? "default" : "outline"}
                               className="text-sm"
                             >
@@ -360,7 +367,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
               <Card>
                 <CardContent className="pt-6 text-center">
                   <p className="text-3xl font-bold text-available">
-                    {data.playerStats.available}
+                    {playerStats.available}
                   </p>
                   <p className="text-sm text-muted-foreground">Available</p>
                 </CardContent>
@@ -368,7 +375,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
               <Card>
                 <CardContent className="pt-6 text-center">
                   <p className="text-3xl font-bold text-sold">
-                    {data.playerStats.sold}
+                    {playerStats.sold}
                   </p>
                   <p className="text-sm text-muted-foreground">Sold</p>
                 </CardContent>
@@ -376,7 +383,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
               <Card>
                 <CardContent className="pt-6 text-center">
                   <p className="text-3xl font-bold text-unsold">
-                    {data.playerStats.unsold}
+                    {playerStats.unsold}
                   </p>
                   <p className="text-sm text-muted-foreground">Unsold</p>
                 </CardContent>
@@ -444,9 +451,11 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
               <CardContent className="p-0">
                 <ScrollArea className="h-[600px]">
                   <div className="p-4 flex flex-col gap-3">
-                    {data.teams.map((team) => {
+                    {!allTeams ? (
+                      <p className="text-sm text-muted-foreground text-center py-6">Loading teams...</p>
+                    ) : (allTeams ?? []).map((team) => {
                       const budgetPercent = (team.remainingBudget / team.totalBudget) * 100;
-                      const isLeading = data.state?.currentTeamId === team._id;
+                      const isLeading = stateLite.currentTeamId === team._id;
 
                       return (
                         <div
@@ -482,7 +491,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                             </div>
                             <div>
                               <User className="h-3 w-3 inline" />
-                              {team.playersCount} / {data.auction.maxPlayersPerTeam}
+                              {team.playersCount} / {auctionMeta.maxPlayersPerTeam}
                             </div>
                           </div>
                           <p className="text-xs mt-2 text-muted-foreground">

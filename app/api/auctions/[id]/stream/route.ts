@@ -6,6 +6,8 @@ import type { AuctionState, Auction, Team, Player } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** Long-lived stream; raise on Vercel (Project Settings → Functions) if connections drop early. */
+export const maxDuration = 300;
 
 export async function GET(
   request: NextRequest,
@@ -116,6 +118,7 @@ export async function GET(
                   currentBid: state.currentBid,
                   currentTeamId: state.currentTeamId?.toString() || null,
                   currentTeamName: state.currentTeamName,
+                  updatedAt: state.updatedAt?.toISOString?.() ?? null,
                   bidHistory: state.bidHistory.slice(-10).map((b) => ({
                     teamName: b.teamName,
                     amount: b.amount,
@@ -136,8 +139,8 @@ export async function GET(
       // Send initial data
       await fetchAndSend();
 
-      // Set up interval for updates
-      const interval = setInterval(fetchAndSend, 2000);
+      // Push updates frequently if this endpoint is used (viewer now uses fast REST polling).
+      const interval = setInterval(fetchAndSend, 500);
 
       // Clean up on close
       request.signal.addEventListener("abort", () => {
@@ -150,8 +153,9 @@ export async function GET(
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
     },
   });
 }
