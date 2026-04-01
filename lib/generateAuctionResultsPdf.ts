@@ -154,14 +154,15 @@ function drawHeader(doc: PDFDocument, team: PdfTeam, tournamentName: string) {
   // Remove duplicated team name in the header and show it only once
   // in a larger, well-sized badge (matches your sample requirement).
   const badgeText = (team.name || team.short).toUpperCase();
-  doc.font("Helvetica-Bold").fontSize(13);
+  const badgeFontSize = 15;
+  doc.font("Helvetica-Bold").fontSize(badgeFontSize);
   const badgeTextW = doc.widthOfString(badgeText);
-  const badgeW = Math.min(bw - 80, Math.max(110, badgeTextW + 34));
-  const badgeH = 34;
+  const badgeW = Math.min(bw - 80, Math.max(120, badgeTextW + 40));
+  const badgeH = 38;
   const badgeX = A4_W / 2 - badgeW / 2;
   const badgeY = MARGIN + 96;
   roundedRect(doc, badgeX, badgeY, badgeW, badgeH, 8, team.colorPrimary);
-  centredText(doc, badgeText, badgeY + 10, "Helvetica-Bold", 13, "#FFFFFF");
+  centredText(doc, badgeText, badgeY + 11, "Helvetica-Bold", badgeFontSize, "#FFFFFF");
 }
 
 function drawCaptainBanner(doc: PDFDocument, team: PdfTeam) {
