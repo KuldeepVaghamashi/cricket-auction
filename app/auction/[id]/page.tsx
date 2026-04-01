@@ -23,25 +23,36 @@ import {
 } from "@/components/ui/dialog";
 import type { AuctionWithId, PlayerWithId, TeamWithStats } from "@/lib/types";
 
-interface AuctionStateLite {
-  _id: string;
-  auctionId: string;
-  currentPlayerId: string | null;
-  currentBid: number;
-  currentTeamId: string | null;
-  currentTeamName: string | null;
-  bidHistory: Array<{
-    teamId: string;
-    teamName: string;
-    amount: number;
-    timestamp: string;
-  }>;
-  updatedAt: string;
-  currentPlayer: {
+/** Payload from GET /api/auctions/[id]/stream (SSE); drives live viewer without polling /state?lite=1 */
+interface StreamPayload {
+  auction: {
     _id: string;
     name: string;
-    basePrice: number;
+    status: string;
+    minIncrement: number;
+    maxPlayersPerTeam: number;
+  };
+  state: {
+    currentBid: number;
+    currentTeamId: string | null;
+    currentTeamName: string | null;
+    updatedAt: string | null;
+    bidHistory: Array<{ teamName: string; amount: number; timestamp?: string }>;
   } | null;
+  currentPlayer: { _id: string; name: string; basePrice: number } | null;
+  teams: Array<{
+    _id?: string;
+    name: string;
+    captainName?: string;
+    totalBudget: number;
+    remainingBudget: number;
+    playersCount: number;
+    remainingSlots: number;
+    maxBid: number;
+  }>;
+  playerStats: { available: number; sold: number; unsold: number };
+  timestamp: string;
+  error?: string;
 }
 
 const jsonFetcher = async <T,>(url: string): Promise<T> => {
@@ -57,49 +68,63 @@ const jsonFetcher = async <T,>(url: string): Promise<T> => {
 export default function AuctionViewerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [streamData, setStreamData] = useState<StreamPayload | null>(null);
 
-  const { data: auctionMeta, error: auctionErr, isLoading: auctionLoading } = useSWR<AuctionWithId>(
-    `/api/auctions/${id}`,
-    jsonFetcher
-  );
+  const {
+    data: auctionMeta,
+    error: auctionErr,
+    isLoading: auctionLoading,
+    mutate: mutateAuction,
+  } = useSWR<AuctionWithId>(`/api/auctions/${id}`, jsonFetcher);
 
   const auctionReady = Boolean(auctionMeta) && !auctionErr;
   const isActive = auctionMeta?.status === "active";
-  // Teams/players change on sold/unsold — poll infrequently; mutate on player change too.
-  const listRefreshMs = isActive ? 15000 : 8000;
 
-  const { data: stateLite, error: stateErr } = useSWR<AuctionStateLite>(
-    auctionReady ? `/api/auctions/${id}/state?lite=1` : null,
+  const { data: allTeams } = useSWR<TeamWithStats[]>(
+    auctionReady && !isActive ? `/api/auctions/${id}/teams` : null,
     jsonFetcher,
-    {
-      // Live bids: fast poll on this endpoint only (teams/players stay quiet).
-      refreshInterval: isActive ? 900 : 0,
-      dedupingInterval: 400,
-      revalidateOnFocus: true,
-    }
-  );
-
-  const { data: allTeams, mutate: mutateTeams } = useSWR<TeamWithStats[]>(
-    `/api/auctions/${id}/teams`,
-    jsonFetcher,
-    { refreshInterval: listRefreshMs, revalidateOnFocus: true }
+    { refreshInterval: 8000, revalidateOnFocus: true }
   );
   const { data: allPlayers, mutate: mutatePlayers } = useSWR<PlayerWithId[]>(
-    `/api/auctions/${id}/players`,
+    auctionReady ? `/api/auctions/${id}/players` : null,
     jsonFetcher,
-    { refreshInterval: listRefreshMs, revalidateOnFocus: true }
+    { refreshInterval: isActive ? 15000 : 8000, revalidateOnFocus: true }
   );
+
+  useEffect(() => {
+    if (!isActive || !id) {
+      setStreamData(null);
+      return;
+    }
+
+    const es = new EventSource(`/api/auctions/${id}/stream`);
+
+    es.onmessage = (event) => {
+      try {
+        const parsed = JSON.parse(event.data) as StreamPayload;
+        setStreamData(parsed);
+        if (parsed.auction?.status && parsed.auction.status !== "active") {
+          void mutateAuction();
+        }
+      } catch (e) {
+        console.error("SSE parse error:", e);
+      }
+    };
+
+    return () => {
+      es.close();
+    };
+  }, [id, isActive, mutateAuction]);
 
   const prevPlayerIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!stateLite || !isActive) return;
-    const pid = stateLite.currentPlayerId;
+    if (!isActive || !streamData) return;
+    const pid = streamData.currentPlayer?._id ?? null;
     if (prevPlayerIdRef.current !== null && pid !== prevPlayerIdRef.current) {
-      void mutateTeams();
       void mutatePlayers();
     }
     prevPlayerIdRef.current = pid;
-  }, [stateLite?.currentPlayerId, isActive, mutateTeams, mutatePlayers]);
+  }, [streamData?.currentPlayer?._id, isActive, mutatePlayers]);
 
   const [nowMs, setNowMs] = useState(Date.now());
 
@@ -109,16 +134,17 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
   }, []);
 
   const playerStats = useMemo(() => {
+    if (isActive && streamData?.playerStats) return streamData.playerStats;
     if (!allPlayers) return { available: 0, sold: 0, unsold: 0 };
     return {
       available: allPlayers.filter((p) => p.status === "available").length,
       sold: allPlayers.filter((p) => p.status === "sold").length,
       unsold: allPlayers.filter((p) => p.status === "unsold").length,
     };
-  }, [allPlayers]);
+  }, [isActive, streamData?.playerStats, allPlayers]);
 
   const loadingInitial =
-    (auctionLoading && !auctionErr) || (auctionReady && stateLite === undefined && !stateErr);
+    (auctionLoading && !auctionErr) || (auctionReady && isActive && streamData === null);
 
   if (loadingInitial) {
     return (
@@ -142,22 +168,14 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     );
   }
 
-  if (stateErr) {
+  if (isActive && streamData?.error) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Card className="max-w-md">
           <CardContent className="pt-6 text-center">
-            <p className="text-destructive">{stateErr.message}</p>
+            <p className="text-destructive">{streamData.error}</p>
           </CardContent>
         </Card>
-      </div>
-    );
-  }
-
-  if (!stateLite) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center text-muted-foreground">Loading auction state...</div>
       </div>
     );
   }
@@ -265,13 +283,25 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     );
   }
 
+  if (!streamData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center text-muted-foreground">Connecting to live feed...</div>
+      </div>
+    );
+  }
+
+  const stateLite = streamData.state;
+  const currentPlayer = streamData.currentPlayer;
+  const teamsLive = streamData.teams;
+
   const recentBidCounts: Record<string, number> = {};
-  (stateLite.bidHistory ?? []).forEach((b) => {
+  (stateLite?.bidHistory ?? []).forEach((b) => {
     recentBidCounts[b.teamName] = (recentBidCounts[b.teamName] ?? 0) + 1;
   });
 
   const teamNameById = new Map<string, string>(
-    (allTeams ?? []).map((t) => [t._id, t.name])
+    teamsLive.filter((t) => t._id).map((t) => [t._id as string, t.name])
   );
   const soldPlayers = (allPlayers ?? []).filter((p) => p.status === "sold");
   const selectedTeamName =
@@ -309,28 +339,28 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4 sm:p-6">
-                {stateLite.currentPlayer ? (
+                {currentPlayer ? (
                   <div className="text-center">
                     <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-3 break-words">
-                      {stateLite.currentPlayer.name}
+                      {currentPlayer.name}
                     </h2>
                     <Badge variant="outline" className="text-lg px-4 py-1">
-                      Base: {stateLite.currentPlayer.basePrice} pts
+                      Base: {currentPlayer.basePrice} pts
                     </Badge>
 
                     {/* Current Bid Display */}
                     <div
                       className={`
                         mt-8 p-8 rounded-xl transition-glow
-                        ${stateLite.currentTeamId ? "bg-primary/10 glow-primary" : "bg-secondary"}
+                        ${stateLite?.currentTeamId ? "bg-primary/10 glow-primary" : "bg-secondary"}
                       `}
                     >
                       <p className="text-muted-foreground mb-2">Current Bid</p>
                       <p className="text-4xl sm:text-6xl lg:text-7xl font-bold text-primary">
-                        {stateLite.currentBid || stateLite.currentPlayer.basePrice}
+                        {stateLite?.currentBid || currentPlayer.basePrice}
                       </p>
                       <p className="text-xl mt-4">
-                        {stateLite.currentTeamName ? (
+                        {stateLite?.currentTeamName ? (
                           <span className="text-primary font-semibold">
                             {stateLite.currentTeamName}
                           </span>
@@ -341,13 +371,13 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     </div>
 
                     {/* Bid History */}
-                    {stateLite.bidHistory && stateLite.bidHistory.length > 0 && (
+                    {stateLite?.bidHistory && stateLite.bidHistory.length > 0 && (
                       <div className="mt-6">
                         <p className="text-sm text-muted-foreground mb-3">Recent Bids</p>
                         <div className="flex flex-wrap justify-center gap-2">
                           {[...stateLite.bidHistory].reverse().slice(0, 5).map((bid, i) => (
                             <Badge
-                              key={`${bid.timestamp}-${i}`}
+                              key={bid.timestamp ? `${bid.timestamp}-${i}` : `${bid.teamName}-${bid.amount}-${i}`}
                               variant={i === 0 ? "default" : "outline"}
                               className="text-sm"
                             >
@@ -414,7 +444,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                 <CardContent className="p-0">
                   <ScrollArea className="h-[240px]">
                     <div className="p-4">
-                      {!allPlayers || !allTeams ? (
+                      {!allPlayers ? (
                         <p className="text-sm text-muted-foreground">Loading results...</p>
                       ) : soldPlayers.length === 0 ? (
                         <p className="text-sm text-muted-foreground">No players sold yet.</p>
@@ -463,21 +493,19 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
               <CardContent className="p-0">
                 <ScrollArea className="h-[600px]">
                   <div className="p-4 flex flex-col gap-3">
-                    {!allTeams ? (
-                      <p className="text-sm text-muted-foreground text-center py-6">Loading teams...</p>
-                    ) : (allTeams ?? []).map((team) => {
+                    {teamsLive.map((team) => {
                       const budgetPercent = (team.remainingBudget / team.totalBudget) * 100;
-                      const isLeading = stateLite.currentTeamId === team._id;
+                      const isLeading = stateLite?.currentTeamId === team._id;
 
                       return (
                         <div
-                          key={team._id}
+                          key={team._id ?? team.name}
                           className={`
                             p-4 rounded-lg border transition-glow cursor-pointer
                             ${isLeading ? "border-primary glow-primary bg-primary/5" : ""}
                             ${selectedTeamId === team._id ? "border-primary bg-primary/10" : ""}
                           `}
-                          onClick={() => setSelectedTeamId(team._id)}
+                          onClick={() => team._id && setSelectedTeamId(team._id)}
                         >
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-semibold">{team.name}</span>

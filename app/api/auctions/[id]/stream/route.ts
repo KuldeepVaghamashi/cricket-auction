@@ -122,6 +122,7 @@ export async function GET(
                   bidHistory: state.bidHistory.slice(-10).map((b) => ({
                     teamName: b.teamName,
                     amount: b.amount,
+                    timestamp: b.timestamp.toISOString(),
                   })),
                 }
               : null,
