@@ -57,23 +57,36 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   const { data: teams, mutate: mutateTeams } = useSWR<TeamWithStats[]>(
     `/api/auctions/${id}/teams`,
     fetcher,
-    { revalidateOnFocus: false }
+    {
+      refreshInterval: 5000,
+      revalidateOnFocus: true,
+    }
   );
   const { data: players, mutate: mutatePlayers } = useSWR<PlayerWithId[]>(
     `/api/auctions/${id}/players`,
     fetcher,
-    { revalidateOnFocus: false }
+    {
+      refreshInterval: 5000,
+      revalidateOnFocus: true,
+    }
   );
   const { data: state, mutate: mutateState } = useSWR<AuctionStateResponse>(
     `/api/auctions/${id}/state?lite=1`,
     fetcher,
-    // No refreshInterval: updates come from mutate() after admin actions (bid, pick, etc.).
-    { revalidateOnFocus: true }
+    {
+      // Sync bids/round across other devices/tabs (local actions still use mutate()).
+      refreshInterval: 2000,
+      dedupingInterval: 1500,
+      revalidateOnFocus: true,
+    }
   );
   const { data: logs, mutate: mutateLogs } = useSWR<AuctionLogResponse[]>(
     `/api/auctions/${id}/logs`,
     fetcher,
-    { revalidateOnFocus: false }
+    {
+      refreshInterval: 4000,
+      revalidateOnFocus: true,
+    }
   );
 
   const [loading, setLoading] = useState(false);
