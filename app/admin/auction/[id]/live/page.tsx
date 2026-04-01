@@ -15,6 +15,7 @@ import {
   Check, 
   X, 
   RotateCcw,
+  Undo2,
   User,
   Users,
   DollarSign,
@@ -76,6 +77,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
 
   const [loading, setLoading] = useState(false);
   const [bidLoadingTeamId, setBidLoadingTeamId] = useState<string | null>(null);
+  const [undoLoading, setUndoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingBid, setPendingBid] = useState<number | null>(null);
   const lastBidClickRef = useRef(0);
@@ -277,6 +279,45 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
     }
   };
 
+  const handleUndoLatestBid = async () => {
+    if (!state.currentPlayer) return;
+    if (state.bidHistory.length === 0) return;
+
+    setUndoLoading(true);
+    setError(null);
+
+    // Optimistic: pop the latest bid and restore previous leader/base.
+    mutateState(
+      (prev) => {
+        if (!prev) return prev;
+        const nextHistory = prev.bidHistory.slice(0, -1);
+        const last = nextHistory.length > 0 ? nextHistory[nextHistory.length - 1] : null;
+        return {
+          ...prev,
+          currentBid: last ? last.amount : prev.currentPlayer?.basePrice ?? prev.currentBid,
+          currentTeamId: last ? last.teamId : null,
+          currentTeamName: last ? last.teamName : null,
+          bidHistory: nextHistory,
+        };
+      },
+      false
+    );
+
+    try {
+      const res = await fetch(`/api/auctions/${id}/state/undo-bid`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        mutateState(); // rollback by revalidating
+        setError(data.error || "Failed to undo bid");
+      } else {
+        playTone(330, 70);
+        mutateState();
+      }
+    } finally {
+      setUndoLoading(false);
+    }
+  };
+
   if (!auction || !teams || !players || !state) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -432,6 +473,15 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                       >
                         <RotateCcw className="h-4 w-4" />
                         Reset
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleUndoLatestBid}
+                        disabled={loading || undoLoading || state.bidHistory.length === 0}
+                        className="gap-2 border-amber-500/60 text-amber-300 hover:bg-amber-500/10"
+                      >
+                        <Undo2 className="h-4 w-4" />
+                        Undo Bid
                       </Button>
                       <Button
                         variant="destructive"
