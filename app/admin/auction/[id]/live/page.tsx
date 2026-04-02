@@ -49,20 +49,11 @@ interface AuctionLogResponse {
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-const teamColorPalette = [
-  "text-amber-400",
-  "text-sky-400",
-  "text-emerald-400",
-  "text-fuchsia-400",
-  "text-orange-400",
-  "text-violet-400",
-];
+const TEAM_BUDGET_COLOR_CLASS = "text-sky-400";
 
-function getTeamColorClass(teamId: string | null | undefined) {
-  if (!teamId) return "text-primary";
-  let hash = 0;
-  for (let i = 0; i < teamId.length; i++) hash = (hash + teamId.charCodeAt(i)) % 100000;
-  return teamColorPalette[hash % teamColorPalette.length];
+function getTeamColorClass(_teamId: string | null | undefined) {
+  // Single consistent shade requested by admin UI.
+  return TEAM_BUDGET_COLOR_CLASS;
 }
 
 export default function LiveAuctionPage({ params }: { params: Promise<{ id: string }> }) {
