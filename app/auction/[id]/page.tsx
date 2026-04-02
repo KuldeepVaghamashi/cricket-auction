@@ -88,7 +88,12 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
   const { data: allPlayers, mutate: mutatePlayers } = useSWR<PlayerWithId[]>(
     auctionReady ? `/api/auctions/${id}/players` : null,
     jsonFetcher,
-    { refreshInterval: isActive ? 15000 : 8000, revalidateOnFocus: true }
+    {
+      // During live auction we rely on SSE (and we trigger `mutatePlayers()` only when `currentPlayerId` changes).
+      // This avoids unnecessary polling and keeps the network clean.
+      refreshInterval: isActive ? 0 : 8000,
+      revalidateOnFocus: !isActive,
+    }
   );
 
   useEffect(() => {
