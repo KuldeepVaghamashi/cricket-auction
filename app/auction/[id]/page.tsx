@@ -535,6 +535,11 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                             </div>
                           </div>
                           <p className="text-xs mt-2 text-muted-foreground">
+                            Max bid:{" "}
+                            <span className="font-medium text-primary">{team.maxBid}</span>{" "}
+                            pts
+                          </p>
+                          <p className="text-xs mt-2 text-muted-foreground">
                             Recent bids: {recentBidCounts[team.name] ?? 0}
                           </p>
                         </div>
