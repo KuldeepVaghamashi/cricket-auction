@@ -187,6 +187,7 @@ export async function GET(
               {
                 projection: {
                   currentBid: 1,
+                  currentPlayerId: 1,
                   currentTeamId: 1,
                   currentTeamName: 1,
                   updatedAt: 1,
@@ -198,7 +199,12 @@ export async function GET(
 
           const stateKey = state
             ? `${state.currentBid}-${state.currentTeamId?.toString() ?? ""}-${
-                state.updatedAt instanceof Date ? state.updatedAt.getTime() : String(state.updatedAt)
+                // Include current player so viewer updates immediately when phase changes.
+                state.currentPlayerId?.toString?.() ?? ""
+              }-${cachedAuction?.status ?? ""}-${
+                state.updatedAt instanceof Date
+                  ? state.updatedAt.getTime()
+                  : String(state.updatedAt)
               }`
             : "null";
 
