@@ -49,6 +49,22 @@ interface AuctionLogResponse {
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
+const teamColorPalette = [
+  "text-amber-400",
+  "text-sky-400",
+  "text-emerald-400",
+  "text-fuchsia-400",
+  "text-orange-400",
+  "text-violet-400",
+];
+
+function getTeamColorClass(teamId: string | null | undefined) {
+  if (!teamId) return "text-primary";
+  let hash = 0;
+  for (let i = 0; i < teamId.length; i++) hash = (hash + teamId.charCodeAt(i)) % 100000;
+  return teamColorPalette[hash % teamColorPalette.length];
+}
+
 export default function LiveAuctionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [viewerCopied, setViewerCopied] = useState(false);
@@ -581,8 +597,18 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                         >
                           <span className="font-semibold">{team.name}</span>
                           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs opacity-80">
-                            <span>Budget: {team.remainingBudget}</span>
-                            <span>Max: {team.maxBid}</span>
+                            <span>
+                              Budget:{" "}
+                              <span className={getTeamColorClass(team._id)}>
+                                {team.remainingBudget}
+                              </span>
+                            </span>
+                            <span>
+                              Max:{" "}
+                              <span className="font-medium text-primary">
+                                {team.maxBid}
+                              </span>
+                            </span>
                             <span>Slots: {team.remainingSlots}</span>
                             <span>Bids: {bidCount}</span>
                           </div>
@@ -656,7 +682,9 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                             />
                           </div>
                           <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>{team.remainingBudget} / {team.totalBudget} pts</span>
+                            <span className={`font-medium ${getTeamColorClass(team._id)}`}>
+                              {team.remainingBudget} / {team.totalBudget} pts
+                            </span>
                             <span>{team.playersCount} / {auction.maxPlayersPerTeam} players</span>
                           </div>
                           <p className="text-xs mt-1">

@@ -39,6 +39,22 @@ import type { AuctionWithId, TeamWithStats, PlayerWithId } from "@/lib/types";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
+const teamColorPalette = [
+  "text-amber-400",
+  "text-sky-400",
+  "text-emerald-400",
+  "text-fuchsia-400",
+  "text-orange-400",
+  "text-violet-400",
+];
+
+function getTeamColorClass(teamId: string | null | undefined) {
+  if (!teamId) return "text-primary";
+  let hash = 0;
+  for (let i = 0; i < teamId.length; i++) hash = (hash + teamId.charCodeAt(i)) % 100000;
+  return teamColorPalette[hash % teamColorPalette.length];
+}
+
 export default function AuctionManagePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
@@ -485,7 +501,9 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                             <TableCell className="font-medium">{team.name}</TableCell>
                             <TableCell>{team.captainName || "-"}</TableCell>
                             <TableCell className="text-right">{team.totalBudget}</TableCell>
-                            <TableCell className="text-right">{team.remainingBudget}</TableCell>
+                            <TableCell className={`text-right font-medium ${getTeamColorClass(team._id)}`}>
+                              {team.remainingBudget}
+                            </TableCell>
                             <TableCell className="text-right">{team.playersCount}</TableCell>
                             <TableCell className="text-right">{team.remainingSlots}</TableCell>
                             <TableCell className="text-right font-medium text-primary">
