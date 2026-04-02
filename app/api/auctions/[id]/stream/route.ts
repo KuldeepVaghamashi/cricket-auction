@@ -138,12 +138,28 @@ export async function GET(
       };
 
       const fetchCurrentPlayerIfNeeded = async (state: AuctionState | null) => {
-        const nextId = state?.currentPlayerId ?? null;
+        const nextIdRaw = state?.currentPlayerId ?? null;
+        if (!nextIdRaw) {
+          cachedCurrentPlayerId = null;
+          cachedCurrentPlayer = null;
+          return;
+        }
+
+        // Safety: in some environments `currentPlayerId` may come as a string.
+        // Convert to ObjectId when possible so Mongo `_id` lookups work reliably.
+        const nextId =
+          typeof nextIdRaw === "string"
+            ? ObjectId.isValid(nextIdRaw)
+              ? new ObjectId(nextIdRaw)
+              : null
+            : nextIdRaw;
+
         if (!nextId) {
           cachedCurrentPlayerId = null;
           cachedCurrentPlayer = null;
           return;
         }
+
         if (cachedCurrentPlayerId && nextId.toString() === cachedCurrentPlayerId.toString()) return;
 
         try {
