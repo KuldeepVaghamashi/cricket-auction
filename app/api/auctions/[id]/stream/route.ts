@@ -33,10 +33,13 @@ export async function GET(
       // - Less frequently: refresh heavy data (teams/maxBid + player counts + auction meta).
       const db = await getDb();
       const now = () => Date.now();
-      const TICK_MS = 300;
+      const TICK_MS = 200;
       const REFRESH_AUCTION_MS = 10000;
       const REFRESH_TEAMS_MS = 4000;
       const REFRESH_STATS_MS = 4000;
+
+      let inFlight = false;
+      let lastStateKey: string | null = null;
 
       let cachedAuction: Auction | null = null;
       let cachedTeamsWithStats:
@@ -164,6 +167,8 @@ export async function GET(
       };
 
       const fetchAndSend = async () => {
+        if (inFlight) return;
+        inFlight = true;
         try {
           // Refresh auction meta occasionally (status can change draft->active->completed).
           if (!cachedAuction || now() - auctionLastFetch > REFRESH_AUCTION_MS) {
@@ -177,7 +182,30 @@ export async function GET(
           // Always read current auction state for near-real-time bids.
           const state = await db
             .collection<AuctionState>("auctionStates")
-            .findOne({ auctionId });
+            .findOne(
+              { auctionId },
+              {
+                projection: {
+                  currentBid: 1,
+                  currentTeamId: 1,
+                  currentTeamName: 1,
+                  updatedAt: 1,
+                  // Reduce payload; viewer only shows last ~5.
+                  bidHistory: { $slice: -10 },
+                } as any,
+              }
+            );
+
+          const stateKey = state
+            ? `${state.currentBid}-${state.currentTeamId?.toString() ?? ""}-${
+                state.updatedAt instanceof Date ? state.updatedAt.getTime() : String(state.updatedAt)
+              }`
+            : "null";
+
+          // Optimization: only push to the client when bid state actually changes.
+          // This reduces UI re-renders and network overhead, improving perceived realtime feel.
+          if (stateKey === lastStateKey) return;
+          lastStateKey = stateKey;
 
           // Refresh teams/maxBid and player stats occasionally.
           if (
@@ -220,6 +248,8 @@ export async function GET(
         } catch (error) {
           console.error("SSE fetch error:", error);
           sendEvent({ error: "Failed to fetch data" });
+        } finally {
+          inFlight = false;
         }
       };
 
