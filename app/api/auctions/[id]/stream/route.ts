@@ -207,6 +207,11 @@ export async function GET(
                   currentTeamId: 1,
                   currentTeamName: 1,
                   updatedAt: 1,
+                  lastAction: 1,
+                  lastActionAt: 1,
+                  lastActionPlayerName: 1,
+                  lastActionTeamName: 1,
+                  lastActionPrice: 1,
                   // Reduce payload; viewer only shows last ~5.
                   bidHistory: { $slice: -10 },
                 } as any,
@@ -255,6 +260,11 @@ export async function GET(
                   currentTeamId: state.currentTeamId?.toString() || null,
                   currentTeamName: state.currentTeamName,
                   updatedAt: state.updatedAt?.toISOString?.() ?? null,
+                  lastAction: state.lastAction ?? null,
+                  lastActionAt: state.lastActionAt?.toISOString?.() ?? null,
+                  lastActionPlayerName: state.lastActionPlayerName ?? null,
+                  lastActionTeamName: state.lastActionTeamName ?? null,
+                  lastActionPrice: state.lastActionPrice ?? null,
                   bidHistory: state.bidHistory.slice(-10).map((b) => ({
                     teamName: b.teamName,
                     amount: b.amount,

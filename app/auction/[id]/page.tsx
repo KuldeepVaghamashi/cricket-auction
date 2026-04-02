@@ -37,6 +37,11 @@ interface StreamPayload {
     currentTeamId: string | null;
     currentTeamName: string | null;
     updatedAt: string | null;
+    lastAction: "sold" | "unsold" | null;
+    lastActionAt: string | null;
+    lastActionPlayerName: string | null;
+    lastActionTeamName: string | null;
+    lastActionPrice: number | null;
     bidHistory: Array<{ teamName: string; amount: number; timestamp?: string }>;
   } | null;
   currentPlayer: { _id: string; name: string; basePrice: number } | null;
@@ -69,6 +74,11 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
   const { id } = use(params);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [streamData, setStreamData] = useState<StreamPayload | null>(null);
+  const [completionAnimation, setCompletionAnimation] = useState<{
+    action: "sold" | "unsold";
+    at: string;
+  } | null>(null);
+  const lastCompletionAtRef = useRef<string | null>(null);
 
   const {
     data: auctionMeta,
@@ -130,6 +140,25 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     }
     prevPlayerIdRef.current = pid;
   }, [streamData?.currentPlayer?._id, isActive, mutatePlayers]);
+
+  // Trigger sold/unsold animation when admin presses those buttons.
+  useEffect(() => {
+    if (!isActive || !streamData?.state?.lastActionAt) return;
+    const at = streamData.state.lastActionAt;
+    if (lastCompletionAtRef.current === at) return;
+
+    const msAgo = Date.now() - new Date(at).getTime();
+    // Avoid animating old events when user opens viewer after the action.
+    if (Number.isFinite(msAgo) && msAgo > 30000) return;
+
+    lastCompletionAtRef.current = at;
+    const action = streamData.state.lastAction;
+    if (action !== "sold" && action !== "unsold") return;
+
+    setCompletionAnimation({ action, at });
+    const t = window.setTimeout(() => setCompletionAnimation(null), 1600);
+    return () => window.clearTimeout(t);
+  }, [isActive, streamData?.state?.lastAction, streamData?.state?.lastActionAt]);
 
   const [nowMs, setNowMs] = useState(Date.now());
 
@@ -343,7 +372,37 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                   Current Player
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-4 sm:p-6">
+              <CardContent className="p-4 sm:p-6 relative">
+                {completionAnimation && (
+                  <div
+                    className={[
+                      "absolute inset-0 z-10 flex items-center justify-center text-center px-4 pointer-events-none",
+                      completionAnimation.action === "sold"
+                        ? "bg-emerald-500/20 border border-emerald-400"
+                        : "bg-amber-500/20 border border-amber-400",
+                    ].join(" ")}
+                  >
+                    <div className="flex flex-col items-center gap-2">
+                      <div
+                        className={
+                          completionAnimation.action === "sold"
+                            ? "text-emerald-300 font-bold text-4xl sm:text-5xl animate-pulse"
+                            : "text-amber-300 font-bold text-4xl sm:text-5xl animate-bounce"
+                        }
+                      >
+                        {completionAnimation.action === "sold" ? "SOLD" : "UNSOLD"}
+                      </div>
+                      <div className="text-sm sm:text-base text-muted-foreground animate-pulse">
+                        {streamData?.state?.lastActionPlayerName
+                          ? streamData.state.lastActionPlayerName
+                          : "Player"}
+                        {completionAnimation.action === "sold" && typeof streamData?.state?.lastActionPrice === "number"
+                          ? ` • ${streamData.state.lastActionPrice} pts`
+                          : ""}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {currentPlayer ? (
                   <div className="text-center">
                     <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-3 break-words">

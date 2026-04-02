@@ -157,6 +157,7 @@ export async function POST(
     }
 
     // Reset auction state
+    const completionAt = new Date();
     await db.collection<AuctionState>("auctionStates").updateOne(
       { auctionId },
       {
@@ -166,7 +167,12 @@ export async function POST(
           currentTeamId: null,
           currentTeamName: null,
           bidHistory: [],
-          updatedAt: new Date(),
+          updatedAt: completionAt,
+          lastAction: action,
+          lastActionAt: completionAt,
+          lastActionPlayerName: player.name,
+          lastActionTeamName: action === "sold" ? state.currentTeamName : null,
+          lastActionPrice: action === "sold" ? state.currentBid : null,
         },
       }
     );

@@ -54,6 +54,12 @@ export interface AuctionState {
   currentTeamName: string | null;
   bidHistory: BidHistoryEntry[];
   updatedAt: Date;
+  // Used by viewer to trigger "sold/unsold" animations without reading logs.
+  lastAction?: "sold" | "unsold" | null;
+  lastActionAt?: Date | null;
+  lastActionPlayerName?: string | null;
+  lastActionTeamName?: string | null;
+  lastActionPrice?: number | null;
 }
 
 export interface Admin {
