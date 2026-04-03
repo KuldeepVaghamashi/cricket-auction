@@ -49,9 +49,23 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
 
+    // Parse datetime-local string properly as local time
+    // datetime-local format: "YYYY-MM-DDTHH:mm"
+    // We need to create a Date that represents the local time correctly
+    let parsedDate: Date;
+    if (typeof date === "string" && date.includes("T")) {
+      // Parse the datetime-local string
+      const [datePart, timePart] = date.split("T");
+      const [year, month, day] = datePart.split("-").map(Number);
+      const [hours, minutes] = timePart.split(":").map(Number);
+      parsedDate = new Date(year, month - 1, day, hours, minutes, 0);
+    } else {
+      parsedDate = new Date(date);
+    }
+
     const auction: Auction = {
       name,
-      date: new Date(date),
+      date: parsedDate,
       budget: Number(budget),
       minIncrement: Number(minIncrement),
       minBid: Number(minBid),

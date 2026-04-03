@@ -221,7 +221,8 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     const soldPlayers = (allPlayers ?? []).filter((p) => p.status === "sold");
     const isDraft = auctionMeta.status === "draft";
 
-    const startsAtMs = auctionMeta?.date ? new Date(auctionMeta.date).getTime() : NaN;
+    const startsAtDate = auctionMeta?.date ? new Date(auctionMeta.date) : null;
+    const startsAtMs = startsAtDate ? startsAtDate.getTime() : NaN;
     const hasStartsAt = Number.isFinite(startsAtMs);
     const msRemaining = hasStartsAt ? startsAtMs - nowMs : 0;
     const hasCountdown = isDraft && hasStartsAt && msRemaining > 0;
@@ -253,7 +254,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                   <div className="flex flex-col items-center gap-1">
                     <p className="text-sm text-muted-foreground">Scheduled Start</p>
                     <p className="font-semibold">
-                      {new Date(startsAtMs).toLocaleString()}
+                      {startsAtDate?.toLocaleString()}
                     </p>
                   </div>
                 )}
