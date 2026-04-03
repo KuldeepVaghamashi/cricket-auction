@@ -49,16 +49,17 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
 
-    // Parse datetime-local string properly as local time
-    // datetime-local format: "YYYY-MM-DDTHH:mm"
-    // We need to create a Date that represents the local time correctly
+    // Parse datetime-local string as UTC
+    // datetime-local format: "YYYY-MM-DDTHH:mm" (no timezone info)
+    // Store as UTC so it displays consistently across all viewers
     let parsedDate: Date;
     if (typeof date === "string" && date.includes("T")) {
-      // Parse the datetime-local string
+      // Parse the datetime-local string and treat it as UTC
       const [datePart, timePart] = date.split("T");
       const [year, month, day] = datePart.split("-").map(Number);
       const [hours, minutes] = timePart.split(":").map(Number);
-      parsedDate = new Date(year, month - 1, day, hours, minutes, 0);
+      // Use UTC to ensure the exact time entered is preserved
+      parsedDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
     } else {
       parsedDate = new Date(date);
     }
