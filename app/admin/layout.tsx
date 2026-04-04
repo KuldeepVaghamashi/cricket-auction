@@ -18,24 +18,45 @@ export default function AdminLayout({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    checkAuth();
-  }, []);
+    const ac = new AbortController();
+    let deadlineId: ReturnType<typeof setTimeout> | undefined;
 
-  const checkAuth = async () => {
-    try {
-      const res = await fetch("/api/auth/me", {
-        credentials: "same-origin",
-        cache: "no-store",
-      });
-      if (!res.ok) {
-        router.push("/login");
-        return;
-      }
-      setLoading(false);
-    } catch {
-      router.push("/login");
-    }
-  };
+    const startId = window.setTimeout(() => {
+      deadlineId = window.setTimeout(() => ac.abort(), 15_000);
+      void (async () => {
+        try {
+          const res = await fetch("/api/auth/me", {
+            credentials: "include",
+            cache: "no-store",
+            signal: ac.signal,
+          });
+          if (deadlineId) {
+            window.clearTimeout(deadlineId);
+            deadlineId = undefined;
+          }
+          if (ac.signal.aborted) return;
+          if (!res.ok) {
+            window.location.assign("/login");
+            return;
+          }
+          setLoading(false);
+        } catch {
+          if (deadlineId) {
+            window.clearTimeout(deadlineId);
+            deadlineId = undefined;
+          }
+          if (ac.signal.aborted) return;
+          window.location.assign("/login");
+        }
+      })();
+    }, 50);
+
+    return () => {
+      ac.abort();
+      window.clearTimeout(startId);
+      if (deadlineId) window.clearTimeout(deadlineId);
+    };
+  }, []);
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
