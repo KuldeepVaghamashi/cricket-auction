@@ -49,9 +49,14 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
 
+    const parsedDate = new Date(date);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return NextResponse.json({ error: "Invalid auction start date" }, { status: 400 });
+    }
+
     const auction: Auction = {
       name,
-      date: new Date(date),
+      date: parsedDate,
       budget: Number(budget),
       minIncrement: Number(minIncrement),
       minBid: Number(minBid),

@@ -28,26 +28,63 @@ export async function GET(
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
 
-      const fetchAndSend = async () => {
+      // Optimize DB work:
+      // - Every tick: only read current auction state (currentBid + bidHistory).
+      // - Less frequently: refresh heavy data (teams/maxBid + player counts + auction meta).
+      const db = await getDb();
+      const now = () => Date.now();
+      const TICK_MS = 200;
+      const REFRESH_AUCTION_MS = 10000;
+      const REFRESH_TEAMS_MS = 4000;
+      const REFRESH_STATS_MS = 4000;
+
+      let inFlight = false;
+      let lastStateKey: string | null = null;
+
+      let cachedAuction: Auction | null = null;
+      let cachedTeamsWithStats:
+        | Array<{
+            _id: string;
+            name: string;
+            captainName?: string;
+            totalBudget: number;
+            remainingBudget: number;
+            playersCount: number;
+            remainingSlots: number;
+            maxBid: number;
+          }>
+        | null = null;
+      let cachedPlayerStats: { available: number; sold: number; unsold: number } = {
+        available: 0,
+        sold: 0,
+        unsold: 0,
+      };
+      let cachedCurrentPlayer: { _id: string; name: string; basePrice: number } | null =
+        null;
+      let cachedCurrentPlayerId: ObjectId | null = null;
+      let teamsLastFetch = 0;
+      let statsLastFetch = 0;
+      let auctionLastFetch = 0;
+
+      const fetchAuction = async () => {
         try {
-          const db = await getDb();
-
-          // Get auction
-          const auction = await db
-            .collection<Auction>("auctions")
-            .findOne({ _id: auctionId });
-
+          const auction = await db.collection<Auction>("auctions").findOne({ _id: auctionId });
           if (!auction) {
-            sendEvent({ error: "Auction not found" });
+            cachedAuction = null;
             return;
           }
+          cachedAuction = auction;
+          auctionLastFetch = now();
+        } catch {
+          // ignore; we'll retry next tick
+        }
+      };
 
-          // Get auction state
-          const state = await db
-            .collection<AuctionState>("auctionStates")
-            .findOne({ auctionId });
+      const fetchTeamsAndStats = async () => {
+        if (!cachedAuction) return;
+        try {
+          const auction = cachedAuction;
 
-          // Get teams with only required fields
           const teams = await db
             .collection<Team>("teams")
             .find(
@@ -64,8 +101,9 @@ export async function GET(
               }
             )
             .toArray();
-          const teamsWithStats = teams.map((team) => ({
-            _id: team._id?.toString(),
+
+          cachedTeamsWithStats = teams.map((team) => ({
+            _id: team._id?.toString() ?? "",
             name: team.name,
             captainName: team.captainName ?? undefined,
             totalBudget: team.totalBudget,
@@ -75,43 +113,146 @@ export async function GET(
             maxBid: calculateMaxBid(team, auction),
           }));
 
-          // Get current player if exists (project minimal fields)
-          let currentPlayer = null;
-          if (state?.currentPlayerId) {
-            const player = await db
-              .collection<Player>("players")
-              .findOne(
-                { _id: state.currentPlayerId },
-                { projection: { _id: 1, name: 1, basePrice: 1 } }
-              );
-            if (player) {
-              currentPlayer = {
-                _id: player._id?.toString(),
-                name: player.name,
-                basePrice: player.basePrice,
-              };
-            }
-          }
-
-          // Get player stats via indexed counts instead of full collection scan.
+          // Player stats via indexed counts.
           const [availableCount, soldCount, unsoldCount] = await Promise.all([
-            db.collection<Player>("players").countDocuments({ auctionId, status: "available" }),
+            db
+              .collection<Player>("players")
+              .countDocuments({ auctionId, status: "available" }),
             db.collection<Player>("players").countDocuments({ auctionId, status: "sold" }),
-            db.collection<Player>("players").countDocuments({ auctionId, status: "unsold" }),
+            db
+              .collection<Player>("players")
+              .countDocuments({ auctionId, status: "unsold" }),
           ]);
-          const playerStats = {
+
+          cachedPlayerStats = {
             available: availableCount,
             sold: soldCount,
             unsold: unsoldCount,
           };
 
+          teamsLastFetch = now();
+          statsLastFetch = now();
+        } catch {
+          // ignore; we'll retry on next refresh window
+        }
+      };
+
+      const fetchCurrentPlayerIfNeeded = async (state: AuctionState | null) => {
+        const nextIdRaw = state?.currentPlayerId ?? null;
+        if (!nextIdRaw) {
+          cachedCurrentPlayerId = null;
+          cachedCurrentPlayer = null;
+          return;
+        }
+
+        // Safety: in some environments `currentPlayerId` may come as a string.
+        // Convert to ObjectId when possible so Mongo `_id` lookups work reliably.
+        const nextId =
+          typeof nextIdRaw === "string"
+            ? ObjectId.isValid(nextIdRaw)
+              ? new ObjectId(nextIdRaw)
+              : null
+            : nextIdRaw;
+
+        if (!nextId) {
+          cachedCurrentPlayerId = null;
+          cachedCurrentPlayer = null;
+          return;
+        }
+
+        if (cachedCurrentPlayerId && nextId.toString() === cachedCurrentPlayerId.toString()) return;
+
+        try {
+          const player = await db
+            .collection<Player>("players")
+            .findOne(
+              { _id: nextId },
+              { projection: { _id: 1, name: 1, basePrice: 1 } }
+            );
+          cachedCurrentPlayerId = nextId;
+          cachedCurrentPlayer = player
+            ? {
+                _id: player._id?.toString() ?? "",
+                name: player.name,
+                basePrice: player.basePrice,
+              }
+            : null;
+        } catch {
+          // ignore
+        }
+      };
+
+      const fetchAndSend = async () => {
+        if (inFlight) return;
+        inFlight = true;
+        try {
+          // Refresh auction meta occasionally (status can change draft->active->completed).
+          if (!cachedAuction || now() - auctionLastFetch > REFRESH_AUCTION_MS) {
+            await fetchAuction();
+          }
+          if (!cachedAuction) {
+            sendEvent({ error: "Auction not found" });
+            return;
+          }
+
+          // Always read current auction state for near-real-time bids.
+          const state = await db
+            .collection<AuctionState>("auctionStates")
+            .findOne(
+              { auctionId },
+              {
+                projection: {
+                  currentBid: 1,
+                  currentPlayerId: 1,
+                  currentTeamId: 1,
+                  currentTeamName: 1,
+                  updatedAt: 1,
+                  lastAction: 1,
+                  lastActionAt: 1,
+                  lastActionPlayerName: 1,
+                  lastActionTeamName: 1,
+                  lastActionPrice: 1,
+                  // Reduce payload; viewer only shows last ~5.
+                  bidHistory: { $slice: -10 },
+                } as any,
+              }
+            );
+
+          const stateKey = state
+            ? `${state.currentBid}-${state.currentTeamId?.toString() ?? ""}-${
+                // Include current player so viewer updates immediately when phase changes.
+                state.currentPlayerId?.toString?.() ?? ""
+              }-${cachedAuction?.status ?? ""}-${
+                state.updatedAt instanceof Date
+                  ? state.updatedAt.getTime()
+                  : String(state.updatedAt)
+              }`
+            : "null";
+
+          // Optimization: only push to the client when bid state actually changes.
+          // This reduces UI re-renders and network overhead, improving perceived realtime feel.
+          if (stateKey === lastStateKey) return;
+          lastStateKey = stateKey;
+
+          // Refresh teams/maxBid and player stats occasionally.
+          if (
+            !cachedTeamsWithStats ||
+            now() - teamsLastFetch > REFRESH_TEAMS_MS ||
+            now() - statsLastFetch > REFRESH_STATS_MS
+          ) {
+            await fetchTeamsAndStats();
+          }
+
+          // Refresh current player only when it changes.
+          await fetchCurrentPlayerIfNeeded(state);
+
           sendEvent({
             auction: {
-              _id: auction._id?.toString(),
-              name: auction.name,
-              status: auction.status,
-              minIncrement: auction.minIncrement,
-              maxPlayersPerTeam: auction.maxPlayersPerTeam,
+              _id: cachedAuction._id?.toString(),
+              name: cachedAuction.name,
+              status: cachedAuction.status,
+              minIncrement: cachedAuction.minIncrement,
+              maxPlayersPerTeam: cachedAuction.maxPlayersPerTeam,
             },
             state: state
               ? {
@@ -119,6 +260,11 @@ export async function GET(
                   currentTeamId: state.currentTeamId?.toString() || null,
                   currentTeamName: state.currentTeamName,
                   updatedAt: state.updatedAt?.toISOString?.() ?? null,
+                  lastAction: state.lastAction ?? null,
+                  lastActionAt: state.lastActionAt?.toISOString?.() ?? null,
+                  lastActionPlayerName: state.lastActionPlayerName ?? null,
+                  lastActionTeamName: state.lastActionTeamName ?? null,
+                  lastActionPrice: state.lastActionPrice ?? null,
                   bidHistory: state.bidHistory.slice(-10).map((b) => ({
                     teamName: b.teamName,
                     amount: b.amount,
@@ -126,22 +272,24 @@ export async function GET(
                   })),
                 }
               : null,
-            currentPlayer,
-            teams: teamsWithStats,
-            playerStats,
+            currentPlayer: cachedCurrentPlayer,
+            teams: cachedTeamsWithStats ?? [],
+            playerStats: cachedPlayerStats,
             timestamp: new Date().toISOString(),
           });
         } catch (error) {
           console.error("SSE fetch error:", error);
           sendEvent({ error: "Failed to fetch data" });
+        } finally {
+          inFlight = false;
         }
       };
 
       // Send initial data
       await fetchAndSend();
 
-      // Push updates frequently if this endpoint is used (viewer now uses fast REST polling).
-      const interval = setInterval(fetchAndSend, 500);
+      // Push updates frequently for near-real-time bids.
+      const interval = setInterval(fetchAndSend, TICK_MS);
 
       // Clean up on close
       request.signal.addEventListener("abort", () => {

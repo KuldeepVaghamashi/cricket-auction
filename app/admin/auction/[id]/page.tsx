@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState, use, useEffect } from "react";
 import useSWR from "swr";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -26,18 +26,37 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { 
-  ArrowLeft, 
-  Plus, 
-  Trash2, 
-  Play, 
-  Users, 
-  User, 
-  DollarSign 
+import {
+  ArrowLeft,
+  Plus,
+  Trash2,
+  Play,
+  Users,
+  User,
+  DollarSign,
+  UserPlus,
 } from "lucide-react";
 import type { AuctionWithId, TeamWithStats, PlayerWithId } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import {
+  ARENA_GLASS_CARD,
+  ARENA_CARD_HEADER,
+  ARENA_GRADIENT_TEXT,
+  ARENA_BTN_CYAN,
+  ARENA_BTN_MAGENTA,
+  ARENA_BTN_OUTLINE,
+} from "@/components/arena/arena-classes";
+import { auctionDateToUtcMs, formatAuctionStartLocal } from "@/lib/auction-date";
+import { resolvePublicViewerBaseUrl } from "@/lib/public-url";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
+const TEAM_BUDGET_COLOR_CLASS = "text-primary";
+
+function getTeamColorClass(_teamId: string | null | undefined) {
+  // Single consistent shade requested by admin UI.
+  return TEAM_BUDGET_COLOR_CLASS;
+}
 
 export default function AuctionManagePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -67,6 +86,13 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
   const [printing, setPrinting] = useState(false);
   const [teamPrintingId, setTeamPrintingId] = useState<string | null>(null);
   const [viewerCopied, setViewerCopied] = useState(false);
+  const [registerLinkCopied, setRegisterLinkCopied] = useState(false);
+  const [registerUrlPreview, setRegisterUrlPreview] = useState("");
+
+  useEffect(() => {
+    const base = resolvePublicViewerBaseUrl();
+    if (base) setRegisterUrlPreview(`${base}/auction/${id}/register`);
+  }, [id]);
   const [selectedTeamForSold, setSelectedTeamForSold] = useState<{
     id: string;
     name: string;
@@ -224,27 +250,12 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
 
   const handleCopyViewerLink = async () => {
     try {
-      const publicBaseUrl = process.env.NEXT_PUBLIC_VIEWER_BASE_URL?.toString() ?? "";
-
-      const origin =
-        typeof window !== "undefined" ? window.location.origin : "";
-      const hostname =
-        typeof window !== "undefined" ? window.location.hostname : "";
-
-      // If the admin is opened on a real hosted domain (Vercel/custom),
-      // always copy the current origin so it matches the deployed site.
-      const isLocal =
-        hostname === "localhost" ||
-        hostname === "127.0.0.1" ||
-        hostname.startsWith("192.168.");
-
-      // IMPORTANT:
-      // To make the link work on any device/network, always prefer a known public URL
-      // (set `NEXT_PUBLIC_VIEWER_BASE_URL` on Vercel to your Production domain).
-      const hasPublic = /^https?:\/\//i.test(publicBaseUrl);
-      const baseUrl = hasPublic ? publicBaseUrl : origin;
-
-      const url = `${baseUrl}/auction/${id}`;
+      const base = resolvePublicViewerBaseUrl();
+      if (!base) {
+        alert("Set NEXT_PUBLIC_VIEWER_BASE_URL or open admin from your public site to copy a full link.");
+        return;
+      }
+      const url = `${base}/auction/${id}`;
       await navigator.clipboard.writeText(url);
       setViewerCopied(true);
       window.setTimeout(() => setViewerCopied(false), 2000);
@@ -253,10 +264,26 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
     }
   };
 
+  const handleCopyRegisterLink = async () => {
+    try {
+      const base = resolvePublicViewerBaseUrl();
+      if (!base) {
+        alert("Set NEXT_PUBLIC_VIEWER_BASE_URL or open admin from your public site to copy a full link.");
+        return;
+      }
+      const url = `${base}/auction/${id}/register`;
+      await navigator.clipboard.writeText(url);
+      setRegisterLinkCopied(true);
+      window.setTimeout(() => setRegisterLinkCopied(false), 2000);
+    } catch {
+      alert("Unable to copy registration link.");
+    }
+  };
+
   if (!auction) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center text-muted-foreground">Loading auction...</div>
+      <div className="mx-auto max-w-[1480px] px-4 py-8 sm:px-8">
+        <div className="text-center text-muted-foreground">Loading auction…</div>
       </div>
     );
   }
@@ -296,28 +323,34 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex flex-col gap-6">
+    <div className="mx-auto max-w-[1480px] px-4 py-8 sm:px-8">
+      <div className="flex flex-col gap-8">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex items-start gap-4">
             <Link href="/admin">
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-primary">
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold">{auction.name}</h1>
-              <p className="text-muted-foreground">
-                {new Date(auction.date).toLocaleDateString("en-US", {
-                  dateStyle: "full",
-                })}
+              <h1 className="font-head-arena text-2xl font-extrabold tracking-tight sm:text-3xl">
+                {auction.name}
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {formatAuctionStartLocal(auctionDateToUtcMs(auction.date)) || "—"}
+              </p>
+              <p className="mt-2 font-head-arena text-xs uppercase tracking-[0.12em] text-arena-magenta/90">
+                Manage · Teams & players
               </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
             {auction.status === "draft" && (
-              <Button onClick={handleStartAuction} className="gap-2">
+              <Button
+                onClick={handleStartAuction}
+                className={cn("font-head-arena gap-2 text-xs font-bold uppercase tracking-wider", ARENA_BTN_CYAN)}
+              >
                 <Play className="h-4 w-4" />
                 Start Auction
               </Button>
@@ -325,63 +358,98 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
             {auction.status === "active" && (
               <>
                 <Link href={`/admin/auction/${id}/live`}>
-                  <Button className="gap-2">
+                  <Button className={cn("font-head-arena gap-2 text-xs font-bold uppercase tracking-wider", ARENA_BTN_MAGENTA)}>
                     <Play className="h-4 w-4" />
                     Auction Control
                   </Button>
                 </Link>
-                <Button variant="outline" onClick={handleCompleteAuction}>
+                <Button variant="outline" onClick={handleCompleteAuction} className={ARENA_BTN_OUTLINE}>
                   Mark Complete
                 </Button>
               </>
             )}
             <Link href={`/auction/${id}`} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" className="gap-2">
+              <Button variant="outline" className={cn("gap-2", ARENA_BTN_OUTLINE)}>
                 Open Viewer
               </Button>
             </Link>
             <Button
               variant="outline"
               onClick={handleCopyViewerLink}
-              className="gap-2"
+              className={cn("gap-2", ARENA_BTN_OUTLINE)}
               disabled={viewerCopied}
             >
               {viewerCopied ? "Copied" : "Copy Viewer Link"}
             </Button>
+            {auction.status === "draft" && (
+              <>
+                <Link href={`/auction/${id}/register`} target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" className={cn("gap-2", ARENA_BTN_OUTLINE)}>
+                    <UserPlus className="h-4 w-4" />
+                    Open Register Page
+                  </Button>
+                </Link>
+                <Button
+                  variant="outline"
+                  onClick={handleCopyRegisterLink}
+                  className={cn("gap-2", ARENA_BTN_OUTLINE)}
+                  disabled={registerLinkCopied}
+                >
+                  {registerLinkCopied ? "Copied" : "Copy Player Register Link"}
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
+        <p className="-mt-4 text-sm text-muted-foreground">
+          Status:{" "}
+          <span className={cn(ARENA_GRADIENT_TEXT, "font-head-arena font-semibold")}>
+            {auction.status === "active" ? "LIVE" : auction.status === "completed" ? "COMPLETE" : "DRAFT"}
+          </span>
+        </p>
+
         {/* Stats */}
         <div className="grid gap-4 md:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Teams</CardDescription>
-              <CardTitle className="text-3xl">{teams?.length || 0}</CardTitle>
+          <Card className={cn(ARENA_GLASS_CARD, "gap-2 py-4")}>
+            <CardHeader className="px-6 pb-0 pt-0">
+              <CardDescription className="font-head-arena text-[10px] font-semibold uppercase tracking-[0.12em]">
+                Teams
+              </CardDescription>
+              <CardTitle className="font-head-arena text-3xl font-extrabold">{teams?.length || 0}</CardTitle>
             </CardHeader>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Total Players</CardDescription>
-              <CardTitle className="text-3xl">{players?.length || 0}</CardTitle>
+          <Card className={cn(ARENA_GLASS_CARD, "gap-2 py-4")}>
+            <CardHeader className="px-6 pb-0 pt-0">
+              <CardDescription className="font-head-arena text-[10px] font-semibold uppercase tracking-[0.12em]">
+                Total Players
+              </CardDescription>
+              <CardTitle className="font-head-arena text-3xl font-extrabold">{players?.length || 0}</CardTitle>
             </CardHeader>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Available</CardDescription>
-              <CardTitle className="text-3xl text-available">{availablePlayers.length}</CardTitle>
+          <Card className={cn(ARENA_GLASS_CARD, "gap-2 py-4")}>
+            <CardHeader className="px-6 pb-0 pt-0">
+              <CardDescription className="font-head-arena text-[10px] font-semibold uppercase tracking-[0.12em]">
+                Available
+              </CardDescription>
+              <CardTitle className="font-head-arena text-3xl font-extrabold text-available">
+                {availablePlayers.length}
+              </CardTitle>
             </CardHeader>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Sold</CardDescription>
-              <CardTitle className="text-3xl text-sold">{soldPlayers.length}</CardTitle>
+          <Card className={cn(ARENA_GLASS_CARD, "gap-2 py-4")}>
+            <CardHeader className="px-6 pb-0 pt-0">
+              <CardDescription className="font-head-arena text-[10px] font-semibold uppercase tracking-[0.12em]">
+                Sold
+              </CardDescription>
+              <CardTitle className="font-head-arena text-3xl font-extrabold text-sold">{soldPlayers.length}</CardTitle>
             </CardHeader>
           </Card>
         </div>
 
         {/* Tabs */}
         <Tabs defaultValue="teams">
-          <TabsList className="w-full sm:w-auto overflow-x-auto">
+          <TabsList className="h-auto w-full gap-1 overflow-x-auto rounded-xl border border-border/60 bg-secondary/40 p-1 sm:w-auto">
             <TabsTrigger value="teams" className="gap-2">
               <Users className="h-4 w-4" />
               Teams ({teams?.length || 0})
@@ -393,8 +461,8 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
           </TabsList>
 
           <TabsContent value="teams" className="mt-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+            <Card className={ARENA_GLASS_CARD}>
+              <CardHeader className={cn(ARENA_CARD_HEADER, "flex flex-row items-center justify-between")}>
                 <div>
                   <CardTitle>Teams</CardTitle>
                   <CardDescription>Manage participating teams</CardDescription>
@@ -485,7 +553,9 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                             <TableCell className="font-medium">{team.name}</TableCell>
                             <TableCell>{team.captainName || "-"}</TableCell>
                             <TableCell className="text-right">{team.totalBudget}</TableCell>
-                            <TableCell className="text-right">{team.remainingBudget}</TableCell>
+                            <TableCell className={`text-right font-medium ${getTeamColorClass(team._id)}`}>
+                              {team.remainingBudget}
+                            </TableCell>
                             <TableCell className="text-right">{team.playersCount}</TableCell>
                             <TableCell className="text-right">{team.remainingSlots}</TableCell>
                             <TableCell className="text-right font-medium text-primary">
@@ -547,11 +617,39 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
           </TabsContent>
 
           <TabsContent value="players" className="mt-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+            <Card className={ARENA_GLASS_CARD}>
+              <CardHeader className={cn(ARENA_CARD_HEADER, "flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between")}>
                 <div>
                   <CardTitle>Player Pool</CardTitle>
                   <CardDescription>Manage players available for auction</CardDescription>
+                  {auction.status === "draft" && (
+                    <div className="mt-4 rounded-xl border border-primary/25 bg-primary/8 p-4">
+                      <p className="font-head-arena text-[10px] font-bold uppercase tracking-wider text-primary">
+                        Player self-registration
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Share the link below so players can add themselves (name + phone). Only works while this
+                        auction is in draft.
+                      </p>
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <Input
+                          readOnly
+                          value={registerUrlPreview || "Resolving public link…"}
+                          className="font-mono text-xs sm:min-w-0 sm:flex-1"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="shrink-0"
+                          onClick={handleCopyRegisterLink}
+                          disabled={registerLinkCopied}
+                        >
+                          {registerLinkCopied ? "Copied" : "Copy link"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {auction.status === "draft" && (
                   <Dialog open={playerDialogOpen} onOpenChange={setPlayerDialogOpen}>
@@ -610,6 +708,8 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                       <TableHeader>
                         <TableRow>
                           <TableHead>Player Name</TableHead>
+                          <TableHead>Phone</TableHead>
+                          <TableHead>Source</TableHead>
                           <TableHead className="text-right">Base Price</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead className="text-right">Sold Price</TableHead>
@@ -622,6 +722,18 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                           return (
                             <TableRow key={player._id}>
                               <TableCell className="font-medium">{player.name}</TableCell>
+                              <TableCell className="font-mono text-sm text-muted-foreground">
+                                {player.phone ?? "—"}
+                              </TableCell>
+                              <TableCell>
+                                {player.selfRegistered ? (
+                                  <Badge variant="outline" className="text-[10px] uppercase">
+                                    Self-reg
+                                  </Badge>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">Admin</span>
+                                )}
+                              </TableCell>
                               <TableCell className="text-right">{player.basePrice}</TableCell>
                               <TableCell>
                                 <Badge

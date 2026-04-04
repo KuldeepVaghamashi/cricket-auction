@@ -19,9 +19,18 @@ import {
   User,
   Users,
   DollarSign,
-  AlertCircle
+  AlertCircle,
+  MousePointerClick,
 } from "lucide-react";
 import type { AuctionWithId, TeamWithStats, PlayerWithId } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import {
+  ARENA_GLASS_CARD,
+  ARENA_CARD_HEADER,
+  ARENA_GRADIENT_TEXT,
+  ARENA_BTN_CYAN,
+  ARENA_BTN_OUTLINE,
+} from "@/components/arena/arena-classes";
 
 interface AuctionStateResponse {
   _id: string;
@@ -48,6 +57,13 @@ interface AuctionLogResponse {
 }
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
+const TEAM_BUDGET_COLOR_CLASS = "text-primary";
+
+function getTeamColorClass(_teamId: string | null | undefined) {
+  // Single consistent shade requested by admin UI.
+  return TEAM_BUDGET_COLOR_CLASS;
+}
 
 export default function LiveAuctionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -294,6 +310,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   };
 
   const handleUndoLatestBid = async () => {
+    if (!state) return;
     if (!state.currentPlayer) return;
     if (state.bidHistory.length === 0) return;
 
@@ -334,8 +351,8 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
 
   if (!auction || !teams || !players || !state) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-muted-foreground">Loading auction...</div>
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="font-head-arena text-sm text-muted-foreground">Loading auction…</div>
       </div>
     );
   }
@@ -350,41 +367,46 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   const minLegalBid = state.currentTeamId ? serverCurrentBid + increment : serverCurrentBid;
   const currentBid = pendingBid ?? serverCurrentBid;
   return (
-    <div className="min-h-screen p-4 lg:p-6">
-      <div className="max-w-[1800px] mx-auto">
+    <div className="min-h-0 p-4 lg:p-6">
+      <div className="mx-auto max-w-[1800px]">
         {/* Header */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3 md:gap-4">
             <Link href={`/admin/auction/${id}`}>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary">
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl lg:text-2xl font-bold break-words">{auction.name}</h1>
+              <h1 className="font-head-arena text-xl font-extrabold tracking-tight break-words lg:text-2xl">
+                {auction.name}
+              </h1>
               <p className="text-sm text-muted-foreground">
-                Live Auction Controller
+                <span className={cn(ARENA_GRADIENT_TEXT, "font-head-arena font-semibold")}>Live</span>{" "}
+                auction controller
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 justify-start md:justify-end">
+          <div className="flex flex-wrap items-center gap-2 justify-start md:justify-end">
+            <Badge
+              className="animate-pulse border border-primary/40 bg-primary/12 font-head-arena text-[10px] font-bold uppercase tracking-[0.15em] text-arena-cyan shadow-lg shadow-primary/25"
+            >
+              LIVE
+            </Badge>
             <Link href={`/auction/${id}`} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" className="gap-2">
+              <Button variant="outline" className={cn("gap-2", ARENA_BTN_OUTLINE)}>
                 Open Viewer
               </Button>
             </Link>
             <Button
               variant="outline"
               onClick={handleCopyViewerLink}
-              className="gap-2"
+              className={cn("gap-2", ARENA_BTN_OUTLINE)}
               disabled={viewerCopied}
             >
               {viewerCopied ? "Copied" : "Copy Viewer Link"}
             </Button>
           </div>
-          <Badge variant="default" className="self-start md:self-auto bg-primary animate-pulse">
-            LIVE
-          </Badge>
         </div>
 
         {/* Error Display */}
@@ -407,37 +429,44 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
           {/* Left Column - Current Player & Controls */}
           <div className="lg:col-span-2 flex flex-col gap-6">
             {/* Current Player Card */}
-            <Card className="overflow-hidden">
-              <CardHeader className="bg-secondary/50">
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  Current Player
+            <Card className={cn(ARENA_GLASS_CARD, "overflow-hidden")}>
+              <CardHeader className={cn(ARENA_CARD_HEADER, "py-5")}>
+                <CardTitle className="font-head-arena flex items-center gap-2 text-base">
+                  <User className="h-5 w-5 text-primary" />
+                  Active <span className={ARENA_GRADIENT_TEXT}>Spotlight</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6">
                 {state.currentPlayer ? (
                   <div className="text-center">
-                    <h2 className="text-3xl lg:text-4xl font-bold mb-2">
+                    <h2 className="mb-2 font-head-arena text-3xl font-extrabold uppercase italic tracking-tight text-foreground lg:text-4xl">
                       {state.currentPlayer.name}
                     </h2>
-                    <Badge variant="outline" className="mb-4 text-lg px-4 py-1">
+                    <Badge
+                      variant="outline"
+                      className="mb-4 border border-primary/30 bg-primary/8 px-4 py-1 font-head-arena text-lg text-arena-cyan"
+                    >
                       Base: {state.currentPlayer.basePrice} pts
                     </Badge>
-                    
+
                     {/* Current Bid Display */}
-                    <div className={`
-                      mt-6 p-6 rounded-xl transition-glow
-                      ${state.currentTeamId ? "bg-primary/10 glow-primary" : "bg-secondary"}
-                    `}>
-                      <p className="text-sm text-muted-foreground mb-1">Current Bid</p>
-                      <p className="text-5xl lg:text-6xl font-bold text-primary">
+                    <div
+                      className={cn(
+                        "mt-6 rounded-2xl border p-6 transition-[box-shadow,background-color] duration-300",
+                        state.currentTeamId
+                          ? "arena-glow-bid border-primary/25 bg-primary/10"
+                          : "border-border/60 bg-secondary/35"
+                      )}
+                    >
+                      <p className="mb-1 font-head-arena text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        Current high bid
+                      </p>
+                      <p className="font-head-arena text-5xl font-extrabold text-arena-cyan lg:text-6xl">
                         {currentBid}
                       </p>
-                      <p className="text-lg mt-2">
+                      <p className="mt-2 text-lg">
                         {state.currentTeamName ? (
-                          <span className="text-primary font-semibold">
-                            {state.currentTeamName}
-                          </span>
+                          <span className="font-semibold text-primary">{state.currentTeamName}</span>
                         ) : (
                           <span className="text-muted-foreground">No bids yet</span>
                         )}
@@ -459,8 +488,12 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                       >
                         <Minus className="h-5 w-5" />
                       </Button>
-                      <span className="text-2xl font-bold min-w-[100px]">
-                        {pendingBid !== null ? <span className="text-primary">{pendingBid}</span> : currentBid}
+                      <span className="min-w-[100px] font-head-arena text-2xl font-bold">
+                        {pendingBid !== null ? (
+                          <span className="text-primary">{pendingBid}</span>
+                        ) : (
+                          currentBid
+                        )}
                       </span>
                       <Button
                         variant="outline"
@@ -492,7 +525,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                         variant="outline"
                         onClick={handleUndoLatestBid}
                         disabled={loading || undoLoading || state.bidHistory.length === 0}
-                        className="gap-2 border-amber-500/60 text-amber-300 hover:bg-amber-500/10"
+                        className="gap-2 border-unsold/45 text-unsold hover:bg-unsold/12"
                       >
                         <Undo2 className="h-4 w-4" />
                         Undo Bid
@@ -509,7 +542,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                       <Button
                         onClick={() => handleComplete("sold")}
                         disabled={loading || !state.currentTeamId}
-                        className="gap-2"
+                        className={cn("gap-2 font-head-arena text-xs font-bold uppercase tracking-wider", ARENA_BTN_CYAN)}
                       >
                         <Check className="h-4 w-4" />
                         Sold
@@ -540,58 +573,129 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
               </CardContent>
             </Card>
 
-            {/* Team Bidding Grid */}
+            {/* Team bid picker — high-contrast cards, matches arena theme */}
             {state.currentPlayer && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Place Bid for Team
+              <Card className={cn(ARENA_GLASS_CARD, "overflow-hidden")}>
+                <CardHeader className={cn(ARENA_CARD_HEADER, "py-5")}>
+                  <CardTitle className="font-head-arena flex flex-wrap items-center gap-2 text-base sm:text-lg">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-arena-magenta/15 ring-1 ring-arena-magenta/25">
+                      <Users className="h-5 w-5 text-arena-magenta" />
+                    </span>
+                    Place bid for team
                   </CardTitle>
-                  <CardDescription>
-                    Click a team to place the current bid amount
+                  <CardDescription className="flex flex-wrap items-center gap-2 text-sm leading-relaxed">
+                    <MousePointerClick className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                    <span>
+                      Tap a team to place{" "}
+                      <span className="font-mono font-semibold tabular-nums text-primary">
+                        {pendingBid ?? minLegalBid}
+                      </span>{" "}
+                      pts for this round.
+                    </span>
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <CardContent className="px-4 pb-5 pt-0 sm:px-6">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {teams.map((team) => {
                       const isLeading = state.currentTeamId === team._id;
                       const bidAmount = pendingBid ?? minLegalBid;
                       const canAffordBid = team.maxBid >= bidAmount;
                       const bidCount = bidCountByTeamId[team._id] ?? 0;
                       const canTeamBid = !isLeading;
-                      
+                      const noSlots = team.remainingSlots <= 0;
+                      const tooHigh = !canAffordBid;
+                      const isBusy = bidLoadingTeamId === team._id;
+                      const isDisabled =
+                        loading ||
+                        isBusy ||
+                        !canTeamBid ||
+                        tooHigh ||
+                        noSlots;
+                      const dimWhenBlocked = isDisabled && !isLeading;
+
                       return (
-                        <Button
+                        <button
                           key={team._id}
-                          variant={isLeading ? "default" : "outline"}
-                          className={`
-                            h-auto p-4 flex flex-col items-start gap-1 transition-glow
-                            ${isLeading ? "glow-primary" : ""}
-                            ${!canAffordBid || team.remainingSlots <= 0 ? "opacity-50" : ""}
-                          `}
-                          disabled={
-                            loading ||
-                            bidLoadingTeamId === team._id ||
-                            !canTeamBid ||
-                            !canAffordBid ||
-                            team.remainingSlots <= 0
-                          }
+                          type="button"
+                          disabled={isDisabled}
                           onClick={() => handlePlaceBid(team._id, bidAmount)}
-                        >
-                          <span className="font-semibold">{team.name}</span>
-                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs opacity-80">
-                            <span>Budget: {team.remainingBudget}</span>
-                            <span>Max: {team.maxBid}</span>
-                            <span>Slots: {team.remainingSlots}</span>
-                            <span>Bids: {bidCount}</span>
-                          </div>
-                          {isLeading && (
-                            <Badge variant="secondary" className="mt-1 text-xs">
-                              Leading
-                            </Badge>
+                          className={cn(
+                            "relative rounded-2xl border p-4 text-left transition-all duration-200",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                            "border-border/80 bg-gradient-to-b from-secondary/95 to-card text-foreground shadow-sm",
+                            !isDisabled && "hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md hover:shadow-primary/10",
+                            isLeading &&
+                              "arena-glow-bid border-primary/55 bg-gradient-to-b from-primary/30 to-primary/15 ring-1 ring-primary/40",
+                            isDisabled && "pointer-events-none hover:translate-y-0",
+                            dimWhenBlocked && "opacity-[0.42] hover:border-border/80 hover:shadow-none",
+                            isBusy && "ring-2 ring-primary/50"
                           )}
-                        </Button>
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="font-head-arena text-base font-bold tracking-tight text-foreground">
+                              {team.name}
+                            </span>
+                            {isLeading ? (
+                              <Badge className="shrink-0 border border-primary/35 bg-primary/20 text-[10px] font-bold uppercase tracking-wider text-arena-cyan">
+                                Leading
+                              </Badge>
+                            ) : null}
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <div className="rounded-xl border border-border/60 bg-black/30 px-2.5 py-2">
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Budget
+                              </p>
+                              <p
+                                className={cn(
+                                  "mt-0.5 font-mono text-sm font-bold tabular-nums",
+                                  getTeamColorClass(team._id)
+                                )}
+                              >
+                                {team.remainingBudget}
+                              </p>
+                            </div>
+                            <div className="rounded-xl border border-border/60 bg-black/30 px-2.5 py-2">
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Max bid
+                              </p>
+                              <p className="mt-0.5 font-mono text-sm font-bold tabular-nums text-arena-magenta">
+                                {team.maxBid}
+                              </p>
+                            </div>
+                            <div className="rounded-xl border border-border/60 bg-black/30 px-2.5 py-2">
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Slots
+                              </p>
+                              <p className="mt-0.5 font-mono text-sm font-bold tabular-nums text-foreground">
+                                {team.remainingSlots}
+                              </p>
+                            </div>
+                            <div className="rounded-xl border border-border/60 bg-black/30 px-2.5 py-2">
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Bids
+                              </p>
+                              <p className="mt-0.5 font-mono text-sm font-bold tabular-nums text-foreground">
+                                {bidCount}
+                              </p>
+                            </div>
+                          </div>
+
+                          {isLeading && (
+                            <p className="mt-2.5 text-[11px] text-muted-foreground">
+                              Current high bidder — cannot bid again until another team raises.
+                            </p>
+                          )}
+                          {noSlots && !isLeading && (
+                            <p className="mt-2.5 text-[11px] font-medium text-unsold">Roster full — cannot bid.</p>
+                          )}
+                          {tooHigh && !noSlots && !isLeading && (
+                            <p className="mt-2.5 text-[11px] font-medium text-unsold">
+                              Max bid below {bidAmount} pts for this amount.
+                            </p>
+                          )}
+                        </button>
                       );
                     })}
                   </div>
@@ -616,11 +720,11 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
           {/* Right Column - Teams Overview & Recent Bids */}
           <div className="flex flex-col gap-6">
             {/* Teams Overview */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <DollarSign className="h-4 w-4" />
-                  Team Budgets
+            <Card className={ARENA_GLASS_CARD}>
+              <CardHeader className={cn(ARENA_CARD_HEADER, "py-4")}>
+                <CardTitle className="font-head-arena flex items-center gap-2 text-base">
+                  <DollarSign className="h-4 w-4 text-primary" />
+                  Budget tracker
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
@@ -633,10 +737,10 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                       return (
                         <div
                           key={team._id}
-                          className={`
-                            p-3 rounded-lg border transition-glow
-                            ${isLeading ? "border-primary glow-primary bg-primary/5" : ""}
-                          `}
+                          className={cn(
+                            "rounded-xl border border-border/60 bg-secondary/30 p-3 transition-[box-shadow] duration-200",
+                            isLeading && "arena-glow-bid border-primary/28 bg-primary/6"
+                          )}
                         >
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-medium text-sm">{team.name}</span>
@@ -649,18 +753,20 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                           <p className="text-xs text-muted-foreground">
                             Captain: {team.captainName || "-"}
                           </p>
-                          <div className="h-2 bg-secondary rounded-full overflow-hidden mb-2">
+                          <div className="mb-2 h-2 overflow-hidden rounded-full bg-border/50">
                             <div
-                              className="h-full bg-primary transition-all"
+                              className="h-full bg-gradient-to-r from-primary to-primary-end transition-all duration-500"
                               style={{ width: `${budgetPercent}%` }}
                             />
                           </div>
                           <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>{team.remainingBudget} / {team.totalBudget} pts</span>
+                            <span className={`font-medium ${getTeamColorClass(team._id)}`}>
+                              {team.remainingBudget} / {team.totalBudget} pts
+                            </span>
                             <span>{team.playersCount} / {auction.maxPlayersPerTeam} players</span>
                           </div>
-                          <p className="text-xs mt-1">
-                            Max bid: <span className="font-medium text-primary">{team.maxBid}</span>
+                          <p className="mt-1 text-xs">
+                            Max bid: <span className="font-medium text-arena-magenta">{team.maxBid}</span>
                           </p>
                         </div>
                       );
@@ -671,9 +777,11 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
             </Card>
 
             {/* Recent Bid History */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Recent Bids</CardTitle>
+            <Card className={ARENA_GLASS_CARD}>
+              <CardHeader className={cn(ARENA_CARD_HEADER, "py-4")}>
+                <CardTitle className="font-head-arena text-base">
+                  Recent <span className={ARENA_GRADIENT_TEXT}>bids</span>
+                </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 <ScrollArea className="h-[200px]">
@@ -686,7 +794,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                       [...state.bidHistory].reverse().map((bid, i) => (
                         <div
                           key={i}
-                          className="flex items-center justify-between p-2 bg-secondary/50 rounded text-sm"
+                          className="flex items-center justify-between rounded-lg border border-border/50 bg-secondary/35 p-2 text-sm"
                         >
                           <span>{bid.teamName}</span>
                           <span className="font-medium">{bid.amount} pts</span>
@@ -699,9 +807,11 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
             </Card>
 
             {/* Auction Activity Log */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Auction Activity</CardTitle>
+            <Card className={ARENA_GLASS_CARD}>
+              <CardHeader className={cn(ARENA_CARD_HEADER, "py-4")}>
+                <CardTitle className="font-head-arena text-base">
+                  Auction <span className="text-arena-magenta">log</span>
+                </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 <ScrollArea className="h-[220px]">
@@ -746,7 +856,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                         return (
                           <div
                             key={log._id}
-                            className="flex items-start justify-between gap-3 p-2 bg-secondary/50 rounded"
+                            className="flex items-start justify-between gap-3 rounded-lg border border-border/60 border-l-[3px] border-l-arena-magenta/55 bg-secondary/30 p-2"
                           >
                             <div className="min-w-0">
                               <div className="text-sm font-medium truncate">{message}</div>
@@ -764,25 +874,25 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
             </Card>
 
             {/* Player Pool Stats */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Player Pool</CardTitle>
+            <Card className={ARENA_GLASS_CARD}>
+              <CardHeader className={cn(ARENA_CARD_HEADER, "py-4")}>
+                <CardTitle className="font-head-arena text-base">Player pool</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="p-2 bg-secondary rounded">
+                  <div className="rounded-lg border border-border/60 bg-secondary/35 p-2">
                     <p className="text-2xl font-bold text-available">
                       {availablePlayers.length}
                     </p>
                     <p className="text-xs text-muted-foreground">Available</p>
                   </div>
-                  <div className="p-2 bg-secondary rounded">
+                  <div className="rounded-lg border border-border/60 bg-secondary/35 p-2">
                     <p className="text-2xl font-bold text-sold">
                       {players.filter((p) => p.status === "sold").length}
                     </p>
                     <p className="text-xs text-muted-foreground">Sold</p>
                   </div>
-                  <div className="p-2 bg-secondary rounded">
+                  <div className="rounded-lg border border-border/60 bg-secondary/35 p-2">
                     <p className="text-2xl font-bold text-unsold">
                       {players.filter((p) => p.status === "unsold").length}
                     </p>

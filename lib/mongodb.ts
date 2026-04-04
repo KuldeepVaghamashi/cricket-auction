@@ -17,6 +17,13 @@ async function ensureIndexes(db: Db) {
     db.collection("teams").createIndex({ auctionId: 1 }),
     db.collection("players").createIndex({ auctionId: 1, status: 1 }),
     db.collection("players").createIndex({ auctionId: 1, soldTo: 1 }),
+    db.collection("players").createIndex(
+      { auctionId: 1, phone: 1 },
+      {
+        unique: true,
+        partialFilterExpression: { phone: { $exists: true, $type: "string" } },
+      }
+    ),
     db.collection("auctionLogs").createIndex({ auctionId: 1, timestamp: -1 }),
   ]);
   indexesReady = true;
