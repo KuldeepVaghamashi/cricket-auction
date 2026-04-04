@@ -23,7 +23,10 @@ export default function AdminLayout({
 
   const checkAuth = async () => {
     try {
-      const res = await fetch("/api/auth/me");
+      const res = await fetch("/api/auth/me", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
       if (!res.ok) {
         router.push("/login");
         return;
@@ -35,7 +38,7 @@ export default function AdminLayout({
   };
 
   const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
     router.push("/login");
   };
 

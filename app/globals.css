@@ -199,6 +199,14 @@
   border-radius: 6px;
 }
 
+/* Public viewer — slightly richer depth, still readable */
+.viewer-page-root {
+  background-image:
+    radial-gradient(ellipse 90% 70% at 50% -30%, oklch(0.76 0.13 211 / 0.11), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 100% 0%, oklch(0.62 0.26 330 / 0.08), transparent 50%),
+    radial-gradient(ellipse 45% 35% at 0% 100%, oklch(0.76 0.13 211 / 0.06), transparent 50%);
+}
+
 .app-glass-header {
   border-bottom: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
   background-color: color-mix(in oklab, var(--card) 82%, transparent);

@@ -1,54 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertCircle } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
+import { loginAction, type LoginFormState } from "./actions";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || "Login failed");
-        return;
-      }
-
-      router.push("/admin");
-    } catch {
-      setError("An error occurred. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [state, formAction, pending] = useActionState(loginAction, null as LoginFormState);
 
   return (
     <div className="app-public-shell">
       <header className="app-glass-header">
         <div className="container mx-auto flex h-14 items-center justify-between px-4">
-          <Link href="/" className="flex items-center gap-2.5 text-sm font-semibold tracking-tight transition-opacity hover:opacity-85">
+          <Link
+            href="/"
+            className="flex items-center gap-2.5 text-sm font-semibold tracking-tight transition-opacity hover:opacity-85"
+          >
             <BrandMark className="h-9 w-9" iconClassName="h-5 w-5" />
             Back to home
           </Link>
@@ -69,11 +41,11 @@ export default function LoginPage() {
             </div>
           </CardHeader>
           <CardContent className="pb-8 pt-2">
-            <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-              {error && (
+            <form action={formAction} className="flex flex-col gap-5">
+              {state?.error && (
                 <div className="flex items-center gap-2 rounded-lg border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
                   <AlertCircle className="h-4 w-4 shrink-0" />
-                  {error}
+                  {state.error}
                 </div>
               )}
 
@@ -81,12 +53,12 @@ export default function LoginPage() {
                 <Label htmlFor="username">Username</Label>
                 <Input
                   id="username"
+                  name="username"
                   type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
                   placeholder="Enter username"
                   required
                   autoComplete="username"
+                  disabled={pending}
                 />
               </div>
 
@@ -94,17 +66,22 @@ export default function LoginPage() {
                 <Label htmlFor="password">Password</Label>
                 <Input
                   id="password"
+                  name="password"
                   type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter password"
                   required
                   autoComplete="current-password"
+                  disabled={pending}
                 />
               </div>
 
-              <Button type="submit" className="mt-1 w-full shadow-lg shadow-primary/15" size="lg" disabled={loading}>
-                {loading ? "Signing in…" : "Sign in"}
+              <Button
+                type="submit"
+                className="mt-1 w-full shadow-lg shadow-primary/15"
+                size="lg"
+                disabled={pending}
+              >
+                {pending ? "Signing in…" : "Sign in"}
               </Button>
             </form>
           </CardContent>

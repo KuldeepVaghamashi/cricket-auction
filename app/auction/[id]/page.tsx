@@ -1,13 +1,24 @@
 "use client";
 
-import { useState, useEffect, useRef, use, useMemo } from "react";
+import { useState, useEffect, useRef, use, useMemo, type ReactNode } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { User, Users, DollarSign, Gavel, ChevronDown, Package, Ban, Trophy } from "lucide-react";
+import {
+  User,
+  Users,
+  DollarSign,
+  Gavel,
+  ChevronDown,
+  Package,
+  Ban,
+  Trophy,
+  Radio,
+  AlertCircle,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import useSWR from "swr";
 import {
@@ -27,6 +38,61 @@ import {
 } from "@/components/ui/dialog";
 import type { AuctionWithId, PlayerWithId, TeamWithStats } from "@/lib/types";
 import { auctionDateToUtcMs, formatAuctionStartLocal } from "@/lib/auction-date";
+import {
+  ARENA_GLASS_CARD,
+  ARENA_CARD_HEADER,
+  ARENA_GRADIENT_TEXT,
+  ARENA_TABLE_FRAME,
+  ARENA_DIALOG_SURFACE,
+  ARENA_WORKSPACE_SHELL,
+  ARENA_MANAGE_HERO,
+  ARENA_BTN_OUTLINE,
+} from "@/components/arena/arena-classes";
+
+const VIEWER_SURFACE = cn(
+  ARENA_GLASS_CARD,
+  "border-white/[0.08] bg-[color-mix(in_oklab,var(--card)_86%,transparent)] shadow-[0_28px_70px_-32px_rgba(0,0,0,0.6)] ring-1 ring-white/[0.03]"
+);
+
+const VIEWER_SHELL = cn("app-public-shell", "viewer-page-root");
+
+function ViewerPublicHeader({
+  eyebrow,
+  title,
+  right,
+  homeAria = "AuctionArena — home",
+}: {
+  eyebrow: string;
+  title: string;
+  right?: ReactNode;
+  homeAria?: string;
+}) {
+  return (
+    <header className="app-glass-header sticky top-0 z-10 arena-top-edge">
+      <div className="container mx-auto flex h-[3.75rem] max-w-7xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
+        <Link
+          href="/"
+          className="group flex min-w-0 flex-1 items-center gap-3 rounded-xl outline-none"
+          aria-label={homeAria}
+        >
+          <BrandMark
+            className="h-9 w-9 shrink-0 rounded-xl transition-[transform,filter] duration-200 group-hover:scale-[1.03] group-focus-visible:ring-2 group-focus-visible:ring-primary/40 group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-background"
+            iconClassName="h-5 w-5"
+          />
+          <div className="min-w-0 text-left">
+            <p className="font-head-arena text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+              {eyebrow}
+            </p>
+            <h1 className="truncate font-head-arena text-sm font-extrabold tracking-tight text-foreground sm:text-base">
+              {title}
+            </h1>
+          </div>
+        </Link>
+        {right ? <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{right}</div> : null}
+      </div>
+    </header>
+  );
+}
 
 /** Payload from GET /api/auctions/[id]/stream (SSE); drives live viewer without polling /state?lite=1 */
 interface StreamPayload {
@@ -218,11 +284,28 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
 
   if (loadingInitial) {
     return (
-      <div className="app-public-shell">
-        <div className="flex flex-1 items-center justify-center px-4">
-          <div className="text-center">
-            <div className="mx-auto mb-4 h-10 w-10 animate-pulse rounded-xl bg-primary/20" />
-            <p className="animate-pulse text-muted-foreground">Loading auction…</p>
+      <div className={VIEWER_SHELL}>
+        <div className="flex flex-1 flex-col items-center justify-center px-4 py-16">
+          <div
+            className={cn(
+              VIEWER_SURFACE,
+              "relative w-full max-w-md overflow-hidden px-8 py-14 text-center"
+            )}
+          >
+            <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/15 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-12 -left-12 h-32 w-32 rounded-full bg-arena-magenta/10 blur-3xl" />
+            <div className="relative mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 shadow-inner ring-1 ring-primary/15">
+              <Radio className="h-7 w-7 animate-pulse text-arena-cyan" strokeWidth={1.5} />
+            </div>
+            <p className="relative font-head-arena text-base font-semibold tracking-tight text-foreground">
+              Loading auction…
+            </p>
+            <p className="relative mt-2 text-sm leading-relaxed text-muted-foreground">
+              Preparing schedules, teams, and live data.
+            </p>
+            <div className="relative mx-auto mt-8 h-1.5 w-48 overflow-hidden rounded-full bg-black/40">
+              <div className="h-full w-1/3 animate-pulse rounded-full bg-gradient-to-r from-primary via-arena-magenta to-primary" />
+            </div>
           </div>
         </div>
       </div>
@@ -231,20 +314,23 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
 
   if (auctionErr || !auctionMeta) {
     return (
-      <div className="app-public-shell">
-        <header className="app-glass-header">
-          <div className="container mx-auto flex h-14 items-center px-4">
-            <Link href="/" className="flex items-center gap-2.5 text-sm font-semibold tracking-tight">
-              <BrandMark className="h-9 w-9" iconClassName="h-5 w-5" />
-              Cricket Auction
-            </Link>
-          </div>
-        </header>
-        <div className="flex flex-1 items-center justify-center p-4">
-          <Card className="app-surface-card max-w-md border-0">
-            <CardContent className="pt-8 pb-8 text-center">
-              <p className="text-destructive">{auctionErr?.message ?? "Auction not found"}</p>
-              <Button asChild className="mt-6" variant="outline">
+      <div className={cn(VIEWER_SHELL, "flex min-h-screen flex-col")}>
+        <ViewerPublicHeader eyebrow="AuctionArena" title="Viewer" />
+        <div className="flex flex-1 items-center justify-center p-4 sm:p-8">
+          <Card className={cn(VIEWER_SURFACE, "max-w-md overflow-hidden")}>
+            <CardHeader className={cn(ARENA_CARD_HEADER, "space-y-2 border-b border-white/[0.06] px-6 py-6 text-center")}>
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-destructive/25 bg-destructive/10">
+                <AlertCircle className="h-7 w-7 text-destructive" strokeWidth={1.75} />
+              </div>
+              <CardTitle className="font-head-arena text-xl font-extrabold tracking-tight">
+                Can&apos;t open this auction
+              </CardTitle>
+              <CardDescription className="text-sm leading-relaxed">
+                {auctionErr?.message ?? "This link may be wrong or the auction was removed."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="px-6 pb-8 pt-6 text-center">
+              <Button asChild className={cn("w-full sm:w-auto", ARENA_BTN_OUTLINE)} variant="outline">
                 <Link href="/">Back to home</Link>
               </Button>
             </CardContent>
@@ -256,19 +342,21 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
 
   if (isActive && streamData?.error) {
     return (
-      <div className="app-public-shell">
-        <header className="app-glass-header">
-          <div className="container mx-auto flex h-14 items-center px-4">
-            <Link href="/" className="flex items-center gap-2.5 text-sm font-semibold tracking-tight">
-              <BrandMark className="h-9 w-9" iconClassName="h-5 w-5" />
-              Cricket Auction
-            </Link>
-          </div>
-        </header>
-        <div className="flex flex-1 items-center justify-center p-4">
-          <Card className="app-surface-card max-w-md border-0">
-            <CardContent className="pt-8 pb-8 text-center">
-              <p className="text-destructive">{streamData.error}</p>
+      <div className={cn(VIEWER_SHELL, "flex min-h-screen flex-col")}>
+        <ViewerPublicHeader eyebrow="AuctionArena" title="Live viewer" />
+        <div className="flex flex-1 items-center justify-center p-4 sm:p-8">
+          <Card className={cn(VIEWER_SURFACE, "max-w-md overflow-hidden")}>
+            <CardHeader className={cn(ARENA_CARD_HEADER, "space-y-2 border-b border-white/[0.06] px-6 py-6 text-center")}>
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-destructive/25 bg-destructive/10">
+                <AlertCircle className="h-7 w-7 text-destructive" strokeWidth={1.75} />
+              </div>
+              <CardTitle className="font-head-arena text-xl font-extrabold tracking-tight">Live feed error</CardTitle>
+              <CardDescription className="text-sm leading-relaxed text-destructive">{streamData.error}</CardDescription>
+            </CardHeader>
+            <CardContent className="px-6 pb-8 pt-6 text-center">
+              <Button asChild className={cn(ARENA_BTN_OUTLINE)} variant="outline" size="sm">
+                <Link href="/">Home</Link>
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -298,36 +386,72 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
       return `${hours}h ${minutes}m ${seconds}s`;
     };
 
-    return (
-      <div className="app-public-shell">
-        <header className="app-glass-header sticky top-0 z-10">
-          <div className="container mx-auto flex h-14 items-center justify-between gap-3 px-4">
-            <Link href="/" className="flex min-w-0 items-center gap-2.5 font-semibold tracking-tight">
-              <BrandMark className="h-9 w-9 shrink-0" iconClassName="h-5 w-5" />
-              <span className="truncate">Cricket Auction</span>
-            </Link>
-          </div>
-        </header>
+    const preStats = {
+      available: (allPlayers ?? []).filter((p) => p.status === "available").length,
+      sold: (allPlayers ?? []).filter((p) => p.status === "sold").length,
+      unsold: (allPlayers ?? []).filter((p) => p.status === "unsold").length,
+    };
 
-        <main className="flex flex-1 flex-col px-4 py-8">
-          <Card className="app-surface-card mx-auto w-full max-w-4xl border-0 py-0">
-            <CardHeader className="border-b border-border/50 bg-secondary/20 pb-6 text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15 ring-1 ring-primary/20">
-                <Gavel className="h-9 w-9 text-primary" />
+    return (
+      <div className={cn(VIEWER_SHELL, "flex min-h-screen flex-col")}>
+        <ViewerPublicHeader eyebrow="AuctionArena" title={auctionMeta.name} />
+
+        <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-8 sm:px-6 sm:py-10">
+          <div className={cn(ARENA_MANAGE_HERO, "mb-6 px-5 py-5 sm:px-7 sm:py-6")}>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="font-head-arena text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                  {auctionMeta.status === "draft" ? "Upcoming session" : "Results archive"}
+                </p>
+                <h2 className="mt-1 font-head-arena text-xl font-extrabold tracking-tight text-foreground sm:text-2xl">
+                  {auctionMeta.status === "draft" ? (
+                    <>
+                      Starts <span className={ARENA_GRADIENT_TEXT}>soon</span>
+                    </>
+                  ) : (
+                    <>
+                      Auction <span className={ARENA_GRADIENT_TEXT}>complete</span>
+                    </>
+                  )}
+                </h2>
+                <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
+                  {auctionMeta.status === "draft"
+                    ? "Bookmark this page — when the host goes live, open the same link for the real-time board."
+                    : "Below is the final sold list. Thanks for following along."}
+                </p>
               </div>
-              <CardTitle className="text-2xl font-bold tracking-tight sm:text-3xl">{auctionMeta.name}</CardTitle>
+              <Badge
+                variant="outline"
+                className="w-fit shrink-0 border-white/15 bg-black/25 px-4 py-2 font-head-arena text-xs font-bold uppercase tracking-wider"
+              >
+                {auctionMeta.status === "draft" ? "Not started" : "Completed"}
+              </Badge>
+            </div>
+          </div>
+
+          <Card className={cn(VIEWER_SURFACE, "w-full overflow-hidden py-0")}>
+            <CardHeader className="relative border-b border-white/[0.06] bg-black/20 pb-8 pt-8 text-center">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-primary/25 bg-primary/12 shadow-inner ring-1 ring-primary/15">
+                <Gavel className="h-9 w-9 text-arena-cyan" strokeWidth={1.75} />
+              </div>
+              <CardTitle className="font-head-arena text-2xl font-extrabold tracking-tight sm:text-3xl">
+                {auctionMeta.name}
+              </CardTitle>
+              <CardDescription className="mx-auto mt-3 max-w-lg text-sm leading-relaxed">
+                {auctionMeta.status === "draft"
+                  ? "Scheduled start and pool snapshot — no bidding until the host opens the room."
+                  : "Official sold roster for this auction."}
+              </CardDescription>
             </CardHeader>
-            <CardContent className="pt-8">
-              <div className="flex flex-col items-center text-center gap-3">
-                <Badge variant="outline" className="text-lg px-4 py-2">
-                  {auctionMeta.status === "draft" ? "Auction Not Started" : "Auction Completed"}
-                </Badge>
+            <CardContent className="px-5 pb-10 pt-8 sm:px-8">
+              <div className="flex flex-col items-center gap-4 text-center">
                 {hasStartsAt && (
-                  <div className="flex flex-col items-center gap-2 rounded-xl border border-border/60 bg-secondary/30 px-5 py-4">
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <div className="flex w-full max-w-md flex-col items-center gap-2 rounded-2xl border border-white/[0.08] bg-black/25 px-5 py-4 shadow-inner">
+                    <p className="font-head-arena text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
                       Scheduled start
                     </p>
-                    <p className="text-center text-lg font-semibold tracking-tight">
+                    <p className="text-center text-lg font-semibold tracking-tight text-foreground">
                       {formatAuctionStartLocal(startsAtMs)}
                     </p>
                   </div>
@@ -335,19 +459,19 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                 {isDraft && hasStartsAt && (
                   <div
                     className={cn(
-                      "rounded-xl border px-5 py-4 text-center",
+                      "w-full max-w-md rounded-2xl border px-5 py-4 text-center shadow-inner",
                       hasCountdown
                         ? "border-primary/35 bg-primary/10"
-                        : "border-border/60 bg-muted/20"
+                        : "border-white/[0.08] bg-black/20"
                     )}
                   >
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    <p className="font-head-arena text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
                       {hasCountdown ? "Time until start" : "Status"}
                     </p>
                     <p
                       className={cn(
-                        "mt-1 font-head-arena text-2xl font-bold tabular-nums tracking-tight",
-                        hasCountdown ? "text-primary" : "text-muted-foreground"
+                        "mt-1 font-head-arena text-2xl font-extrabold tabular-nums tracking-tight",
+                        hasCountdown ? "text-arena-cyan" : "text-muted-foreground"
                       )}
                     >
                       {hasCountdown ? formatCountdown(msRemaining) : "Starting soon"}
@@ -355,47 +479,91 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                   </div>
                 )}
                 {isDraft && !hasStartsAt && (
-                  <Badge variant="secondary" className="text-base px-4 py-2">
-                    No start time set — check back soon
+                  <Badge variant="secondary" className="border-white/10 bg-secondary/80 px-4 py-2 text-sm">
+                    Start time not set — check back soon
                   </Badge>
                 )}
-                <p className="text-muted-foreground">
-                  {auctionMeta.status === "draft"
-                    ? "The auction has not started yet. Please wait for the auctioneer to begin."
-                    : "This auction has been completed. Here are the sold results."}
-                </p>
+                {allPlayers ? (
+                  <div className="mt-4 grid w-full max-w-xl grid-cols-3 gap-2 sm:mt-6 sm:gap-3">
+                    <div className="rounded-xl border border-available/25 bg-available/[0.08] py-3 text-center shadow-inner ring-1 ring-available/10">
+                      <p className="font-head-arena text-2xl font-extrabold tabular-nums text-available sm:text-3xl">
+                        {preStats.available}
+                      </p>
+                      <p className="mt-1 font-head-arena text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Available
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-sold/25 bg-sold/[0.08] py-3 text-center shadow-inner ring-1 ring-sold/10">
+                      <p className="font-head-arena text-2xl font-extrabold tabular-nums text-sold sm:text-3xl">
+                        {preStats.sold}
+                      </p>
+                      <p className="mt-1 font-head-arena text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Sold
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-unsold/25 bg-unsold/[0.08] py-3 text-center shadow-inner ring-1 ring-unsold/10">
+                      <p className="font-head-arena text-2xl font-extrabold tabular-nums text-unsold sm:text-3xl">
+                        {preStats.unsold}
+                      </p>
+                      <p className="mt-1 font-head-arena text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Unsold
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
-              <div className="mt-8">
-                <h3 className="mb-4 text-lg font-bold tracking-tight">Sold players</h3>
+              <div className="mt-10">
+                <div className="mb-4 flex flex-wrap items-end justify-between gap-2 border-b border-white/[0.06] pb-3">
+                  <h3 className="font-head-arena text-lg font-extrabold tracking-tight sm:text-xl">
+                    Sold <span className={ARENA_GRADIENT_TEXT}>players</span>
+                  </h3>
+                  {soldPlayers.length > 0 && (
+                    <Badge variant="secondary" className="font-mono text-xs tabular-nums">
+                      {soldPlayers.length} total
+                    </Badge>
+                  )}
+                </div>
                 {!allPlayers || !allTeams ? (
-                  <p className="text-sm text-muted-foreground">Loading results...</p>
+                  <p className="rounded-xl border border-dashed border-white/10 bg-black/15 py-8 text-center text-sm text-muted-foreground">
+                    Loading results…
+                  </p>
                 ) : soldPlayers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No players were sold.</p>
+                  <p className="rounded-xl border border-dashed border-white/12 bg-black/20 py-12 text-center text-sm leading-relaxed text-muted-foreground">
+                    No players were sold in this auction.
+                  </p>
                 ) : (
-                  <ScrollArea className="h-[360px]">
+                  <ScrollArea className="h-[min(380px,52vh)] sm:h-[380px]">
+                    <div className={ARENA_TABLE_FRAME}>
                     <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Player</TableHead>
-                          <TableHead>Sold To</TableHead>
-                          <TableHead className="text-right">Points</TableHead>
+                      <TableHeader className="bg-gradient-to-b from-white/[0.06] to-transparent [&_tr]:border-white/[0.06]">
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Player
+                          </TableHead>
+                          <TableHead className="font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Sold to
+                          </TableHead>
+                          <TableHead className="text-right font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Points
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {soldPlayers.map((p) => (
-                          <TableRow key={p._id}>
-                            <TableCell className="font-medium">{p.name}</TableCell>
-                            <TableCell>
-                              {p.soldTo ? teamNameById.get(p.soldTo) ?? "-" : "-"}
+                          <TableRow key={p._id} className="border-white/[0.05] hover:bg-sold/5">
+                            <TableCell className="px-4 py-3 font-semibold">{p.name}</TableCell>
+                            <TableCell className="px-4 py-3 text-muted-foreground">
+                              {p.soldTo ? teamNameById.get(p.soldTo) ?? "—" : "—"}
                             </TableCell>
-                            <TableCell className="text-right">
-                              {typeof p.soldPrice === "number" ? p.soldPrice : "-"}
+                            <TableCell className="px-4 py-3 text-right font-mono font-semibold tabular-nums text-sold">
+                              {typeof p.soldPrice === "number" ? p.soldPrice : "—"}
                             </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
+                    </div>
                   </ScrollArea>
                 )}
               </div>
@@ -403,9 +571,14 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
           </Card>
         </main>
 
-        <footer className="mt-auto border-t border-border/60 bg-card/50 py-6 backdrop-blur-md">
-          <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-            <p>Designed and Developed By Kuldeep Ahir</p>
+        <footer className="mt-auto border-t border-white/[0.06] bg-black/20 py-8 backdrop-blur-md">
+          <div className="container mx-auto max-w-7xl px-4 text-center sm:px-6">
+            <p className="font-head-arena text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+              AuctionArena
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Designed and developed by Kuldeep Ahir
+            </p>
           </div>
         </footer>
       </div>
@@ -414,13 +587,18 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
 
   if (!streamData) {
     return (
-      <div className="app-public-shell">
-        <div className="flex flex-1 items-center justify-center px-4">
-          <div className="text-center">
-            <div className="mx-auto mb-4 h-2 w-32 overflow-hidden rounded-full bg-border">
-              <div className="h-full w-1/2 animate-pulse rounded-full bg-primary" />
+      <div className={cn(VIEWER_SHELL, "flex min-h-screen flex-col")}>
+        <ViewerPublicHeader eyebrow="AuctionArena" title={auctionMeta.name} />
+        <div className="flex flex-1 flex-col items-center justify-center px-4 py-16">
+          <div className={cn(VIEWER_SURFACE, "relative w-full max-w-sm overflow-hidden px-8 py-12 text-center")}>
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_50%_0%,oklch(0.76_0.13_211/0.12),transparent)]" />
+            <div className="relative mx-auto mb-5 h-2 w-40 overflow-hidden rounded-full bg-black/45 ring-1 ring-white/[0.06]">
+              <div className="h-full w-2/5 animate-pulse rounded-full bg-gradient-to-r from-primary via-arena-magenta to-primary" />
             </div>
-            <p className="text-muted-foreground">Connecting to live feed…</p>
+            <p className="relative font-head-arena text-base font-semibold text-foreground">Connecting to live feed…</p>
+            <p className="relative mt-2 text-sm leading-relaxed text-muted-foreground">
+              Hang tight — bids and the block sync in real time.
+            </p>
           </div>
         </div>
       </div>
@@ -447,44 +625,66 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     : [];
 
   return (
-    <div className="app-public-shell flex flex-col">
-      <header className="app-glass-header sticky top-0 z-10">
-        <div className="container mx-auto flex h-14 items-center justify-between gap-3 px-4">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <Link href="/" className="shrink-0" aria-label="Cricket Auction home">
-              <BrandMark className="h-9 w-9" iconClassName="h-5 w-5" />
-            </Link>
-            <h1 className="truncate text-sm font-bold tracking-tight sm:text-lg">{auctionMeta.name}</h1>
-          </div>
-          <Badge
-            variant="default"
-            className="shrink-0 animate-pulse border border-primary/30 bg-primary/90 shadow-md shadow-primary/20"
-          >
-            LIVE
-          </Badge>
-        </div>
-      </header>
+    <div className={cn(VIEWER_SHELL, "flex min-h-screen flex-col")}>
+      <ViewerPublicHeader
+        eyebrow="Live broadcast"
+        title={auctionMeta.name}
+        right={
+          <>
+            <Badge
+              variant="outline"
+              className="hidden border-white/12 bg-black/30 font-mono text-[10px] font-semibold tabular-nums text-muted-foreground sm:inline-flex"
+            >
+              +{streamData.auction.minIncrement} pts / raise
+            </Badge>
+            <Badge className="shrink-0 animate-pulse border border-primary/45 bg-primary/18 font-head-arena text-[10px] font-bold uppercase tracking-wider text-arena-cyan shadow-lg shadow-primary/20">
+              <Radio className="mr-1 h-3 w-3" aria-hidden />
+              Live
+            </Badge>
+          </>
+        }
+      />
 
-      <main className="container mx-auto flex-1 px-4 py-6">
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Main Section - Current Player */}
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
+        <p className="mb-4 max-w-3xl text-sm leading-relaxed text-muted-foreground sm:mb-5">
+          Follow the player on the block, live high bid, and every team&apos;s purse — no refresh needed.
+          <span className="mt-1 block text-xs text-muted-foreground/90 sm:hidden">
+            Raises go up by <span className="font-mono font-semibold text-foreground">{streamData.auction.minIncrement}</span>{" "}
+            pts at a time.
+          </span>
+        </p>
+        <div className={cn(ARENA_WORKSPACE_SHELL, "p-3 sm:p-4 lg:p-5")}>
+          <div className="grid gap-6 lg:grid-cols-3 lg:gap-8">
           <div className="lg:col-span-2">
-            <Card className="overflow-hidden">
-              <CardHeader className="bg-secondary/50">
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  Current Player
+            <Card className={cn(VIEWER_SURFACE, "overflow-hidden")}>
+              <CardHeader
+                className={cn(
+                  ARENA_CARD_HEADER,
+                  "relative border-b border-white/[0.06] px-5 py-4 sm:px-6 sm:py-5"
+                )}
+              >
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
+                <CardTitle className="flex items-center gap-3 font-head-arena text-base tracking-tight sm:text-lg">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary/30 bg-primary/12 text-arena-cyan shadow-inner ring-1 ring-primary/10">
+                    <User className="h-5 w-5" strokeWidth={1.75} />
+                  </span>
+                  <span>
+                    On the <span className={ARENA_GRADIENT_TEXT}>block</span>
+                  </span>
                 </CardTitle>
+                <CardDescription className="mt-1 text-sm leading-relaxed">
+                  Name, base price, and current high bid update as the auctioneer runs the room.
+                </CardDescription>
               </CardHeader>
-              <CardContent className="p-4 sm:p-6 relative">
+              <CardContent className="relative overflow-hidden p-5 sm:p-8 [background:radial-gradient(ellipse_90%_60%_at_50%_-20%,oklch(0.76_0.13_211/0.07),transparent)]">
                 {completionAnimation && (
                   <div
-                    className={[
-                      "absolute inset-0 z-10 flex items-center justify-center text-center px-4 pointer-events-none",
+                    className={cn(
+                      "absolute inset-0 z-10 flex items-center justify-center px-4 text-center backdrop-blur-[3px] pointer-events-none",
                       completionAnimation.action === "sold"
-                        ? "bg-sold/20 border border-sold/50"
-                        : "bg-unsold/20 border border-unsold/45",
-                    ].join(" ")}
+                        ? "bg-sold/25 ring-1 ring-sold/40"
+                        : "bg-unsold/25 ring-1 ring-unsold/35"
+                    )}
                   >
                     <div className="flex flex-col items-center gap-2">
                       <div
@@ -509,45 +709,53 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                 )}
                 {currentPlayer ? (
                   <div className="text-center">
-                    <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-3 break-words">
+                    <h2 className="mb-3 break-words font-head-arena text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-[2.75rem] lg:leading-[1.1]">
                       {currentPlayer.name}
                     </h2>
-                    <Badge variant="outline" className="text-lg px-4 py-1">
-                      Base: {currentPlayer.basePrice} pts
+                    <Badge
+                      variant="outline"
+                      className="border-primary/30 bg-primary/10 px-4 py-1 font-head-arena text-sm font-bold text-arena-cyan"
+                    >
+                      Base {currentPlayer.basePrice} pts
                     </Badge>
 
-                    {/* Current Bid Display */}
                     <div
-                      className={`
-                        mt-8 p-8 rounded-xl transition-glow
-                        ${stateLite?.currentTeamId ? "bg-primary/10 glow-primary" : "bg-secondary"}
-                      `}
+                      className={cn(
+                        "mt-8 rounded-2xl border p-6 transition-all duration-300 sm:p-10",
+                        stateLite?.currentTeamId
+                          ? "arena-glow-bid border-primary/35 bg-gradient-to-b from-primary/15 to-primary/5"
+                          : "border-white/[0.08] bg-black/25 shadow-inner"
+                      )}
                     >
-                      <p className="text-muted-foreground mb-2">Current Bid</p>
-                      <p className="text-4xl sm:text-6xl lg:text-7xl font-bold text-primary">
+                      <p className="mb-1 font-head-arena text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                        Current high bid
+                      </p>
+                      <p className="font-head-arena text-4xl font-extrabold tabular-nums tracking-tight text-arena-cyan sm:text-6xl lg:text-7xl">
                         {stateLite?.currentBid || currentPlayer.basePrice}
                       </p>
-                      <p className="text-xl mt-4">
+                      <p className="mt-4 text-lg sm:text-xl">
                         {stateLite?.currentTeamName ? (
-                          <span className="text-primary font-semibold">
-                            {stateLite.currentTeamName}
-                          </span>
+                          <span className="font-semibold text-primary">{stateLite.currentTeamName}</span>
                         ) : (
-                          <span className="text-muted-foreground">Waiting for bids...</span>
+                          <span className="text-muted-foreground">Waiting for the first bid…</span>
                         )}
                       </p>
                     </div>
 
-                    {/* Bid History */}
                     {stateLite?.bidHistory && stateLite.bidHistory.length > 0 && (
-                      <div className="mt-6">
-                        <p className="text-sm text-muted-foreground mb-3">Recent Bids</p>
+                      <div className="mt-8">
+                        <p className="mb-3 font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          Latest bids
+                        </p>
                         <div className="flex flex-wrap justify-center gap-2">
                           {[...stateLite.bidHistory].reverse().slice(0, 5).map((bid, i) => (
                             <Badge
                               key={bid.timestamp ? `${bid.timestamp}-${i}` : `${bid.teamName}-${bid.amount}-${i}`}
                               variant={i === 0 ? "default" : "outline"}
-                              className="text-sm"
+                              className={cn(
+                                "font-mono text-xs tabular-nums sm:text-sm",
+                                i === 0 && "border-primary/35 bg-primary/20 text-arena-cyan"
+                              )}
                             >
                               {bid.teamName}: {bid.amount}
                             </Badge>
@@ -557,15 +765,15 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     )}
                   </div>
                 ) : (
-                  <div className="text-center py-16">
-                    <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-secondary mb-4">
-                      <User className="h-10 w-10 text-muted-foreground" />
+                  <div className="rounded-2xl border border-dashed border-white/12 bg-black/25 py-14 text-center shadow-inner ring-1 ring-white/[0.02] sm:py-16">
+                    <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl border border-primary/20 bg-primary/5 shadow-inner">
+                      <User className="h-10 w-10 text-muted-foreground" strokeWidth={1.5} />
                     </div>
-                    <p className="text-xl text-muted-foreground">
-                      Waiting for next player...
+                    <p className="font-head-arena text-lg font-bold tracking-tight text-foreground sm:text-xl">
+                      Waiting for the next player
                     </p>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      The auctioneer will pick the next player shortly
+                    <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
+                      The room is between picks — names and bids will appear here automatically.
                     </p>
                   </div>
                 )}
@@ -579,11 +787,12 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                 onClick={() => togglePoolFilter("available")}
                 aria-pressed={poolFilter === "available"}
                 className={cn(
-                  "rounded-2xl border bg-card/90 p-5 text-left shadow-sm transition-all duration-200",
-                  "hover:border-available/45 hover:bg-available/5",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-available/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                  ARENA_GLASS_CARD,
+                  "border-white/[0.08] bg-[color-mix(in_oklab,var(--card)_88%,transparent)] p-5 text-left shadow-lg shadow-black/20 backdrop-blur-md transition-all duration-200",
+                  "hover:-translate-y-0.5 hover:border-available/40 hover:shadow-xl hover:shadow-available/10",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-available/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                   poolFilter === "available" &&
-                    "border-available/50 bg-available/10 shadow-[0_0_28px_-6px] shadow-available/35 ring-1 ring-available/25"
+                    "border-available/50 bg-available/10 shadow-[0_0_32px_-8px] shadow-available/40 ring-1 ring-available/30"
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -596,20 +805,23 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     aria-hidden
                   />
                 </div>
-                <p className="mt-3 text-4xl font-bold tabular-nums tracking-tight text-available">
+                <p className="mt-3 font-head-arena text-4xl font-extrabold tabular-nums tracking-tight text-available">
                   {playerStats.available}
                 </p>
-                <p className="mt-1 text-sm font-medium text-foreground">Available</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">Tap to show all names</p>
+                <p className="mt-1 font-head-arena text-xs font-bold uppercase tracking-wider text-foreground">
+                  Available
+                </p>
+                <p className="mt-1 text-xs leading-snug text-muted-foreground">Tap to list everyone still in the pool</p>
               </button>
 
               <button
                 type="button"
                 onClick={scrollToSold}
                 className={cn(
-                  "rounded-2xl border bg-card/90 p-5 text-left shadow-sm transition-all duration-200",
-                  "hover:border-sold/45 hover:bg-sold/5",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sold/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  ARENA_GLASS_CARD,
+                  "border-white/[0.08] bg-[color-mix(in_oklab,var(--card)_88%,transparent)] p-5 text-left shadow-lg shadow-black/20 backdrop-blur-md transition-all duration-200",
+                  "hover:-translate-y-0.5 hover:border-sold/40 hover:shadow-xl hover:shadow-sold/10",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sold/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -618,11 +830,11 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     View list
                   </span>
                 </div>
-                <p className="mt-3 text-4xl font-bold tabular-nums tracking-tight text-sold">
+                <p className="mt-3 font-head-arena text-4xl font-extrabold tabular-nums tracking-tight text-sold">
                   {playerStats.sold}
                 </p>
-                <p className="mt-1 text-sm font-medium text-foreground">Sold</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">Jump to results below</p>
+                <p className="mt-1 font-head-arena text-xs font-bold uppercase tracking-wider text-foreground">Sold</p>
+                <p className="mt-1 text-xs leading-snug text-muted-foreground">Jump to the live results table</p>
               </button>
 
               <button
@@ -630,11 +842,12 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                 onClick={() => togglePoolFilter("unsold")}
                 aria-pressed={poolFilter === "unsold"}
                 className={cn(
-                  "rounded-2xl border bg-card/90 p-5 text-left shadow-sm transition-all duration-200",
-                  "hover:border-unsold/45 hover:bg-unsold/5",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-unsold/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                  ARENA_GLASS_CARD,
+                  "border-white/[0.08] bg-[color-mix(in_oklab,var(--card)_88%,transparent)] p-5 text-left shadow-lg shadow-black/20 backdrop-blur-md transition-all duration-200",
+                  "hover:-translate-y-0.5 hover:border-unsold/40 hover:shadow-xl hover:shadow-unsold/10",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-unsold/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                   poolFilter === "unsold" &&
-                    "border-unsold/50 bg-unsold/10 shadow-[0_0_28px_-6px] shadow-unsold/30 ring-1 ring-unsold/25"
+                    "border-unsold/50 bg-unsold/10 shadow-[0_0_32px_-8px] shadow-unsold/35 ring-1 ring-unsold/30"
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -647,11 +860,13 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     aria-hidden
                   />
                 </div>
-                <p className="mt-3 text-4xl font-bold tabular-nums tracking-tight text-unsold">
+                <p className="mt-3 font-head-arena text-4xl font-extrabold tabular-nums tracking-tight text-unsold">
                   {playerStats.unsold}
                 </p>
-                <p className="mt-1 text-sm font-medium text-foreground">Unsold</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">Tap to show all names</p>
+                <p className="mt-1 font-head-arena text-xs font-bold uppercase tracking-wider text-foreground">
+                  Unsold
+                </p>
+                <p className="mt-1 text-xs leading-snug text-muted-foreground">Tap to list players passed without a sale</p>
               </button>
             </div>
 
@@ -659,15 +874,17 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
             {poolFilter && (
               <Card
                 className={cn(
-                  "mt-4 overflow-hidden border shadow-md",
-                  poolFilter === "available" && "border-available/30 bg-gradient-to-b from-available/5 to-card",
-                  poolFilter === "unsold" && "border-unsold/30 bg-gradient-to-b from-unsold/5 to-card"
+                  VIEWER_SURFACE,
+                  "mt-4 overflow-hidden",
+                  poolFilter === "available" && "border-available/25 ring-1 ring-available/15",
+                  poolFilter === "unsold" && "border-unsold/25 ring-1 ring-unsold/15"
                 )}
               >
-                <CardHeader className="space-y-1 border-b border-border/60 py-4">
+                <CardHeader className={cn(ARENA_CARD_HEADER, "relative space-y-1 border-b border-white/[0.06] py-4 sm:py-5")}>
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
                   <CardTitle
                     className={cn(
-                      "flex items-center gap-2 text-lg",
+                      "flex flex-wrap items-center gap-2 text-base font-head-arena sm:text-lg",
                       poolFilter === "available" && "text-available",
                       poolFilter === "unsold" && "text-unsold"
                     )}
@@ -689,9 +906,9 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                         : unsoldPlayersSorted.length}
                     </Badge>
                   </CardTitle>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
                     {poolFilter === "available"
-                      ? "Still in the pool — not yet sold or marked unsold."
+                      ? "Still in the pool — not yet sold or marked unsold. On the block is highlighted."
                       : "Passed without a sale in this auction."}
                   </p>
                 </CardHeader>
@@ -740,18 +957,28 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
             )}
 
             {/* Sold results — always visible under pool tools */}
-            <div ref={soldSectionRef} id="viewer-sold-section" className="mt-6 scroll-mt-24">
-              <Card className="overflow-hidden border-sold/25 bg-gradient-to-br from-card via-card to-sold/5 shadow-md ring-1 ring-border/80">
-                <CardHeader className="border-b border-border/60 bg-sold/5 pb-4">
+            <div ref={soldSectionRef} id="viewer-sold-section" className="mt-6 scroll-mt-28">
+              <Card
+                className={cn(
+                  VIEWER_SURFACE,
+                  "overflow-hidden border-sold/30 bg-gradient-to-br from-card via-card to-sold/[0.08] ring-1 ring-sold/20"
+                )}
+              >
+                <CardHeader className={cn(ARENA_CARD_HEADER, "relative border-b border-white/[0.06] bg-sold/[0.06] pb-4 sm:pb-5")}>
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sold/35 to-transparent" />
                   <div className="flex flex-wrap items-center gap-2 gap-y-1">
-                    <Trophy className="h-5 w-5 text-sold" />
-                    <CardTitle className="text-lg sm:text-xl">Sold players</CardTitle>
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-sold/30 bg-sold/10">
+                      <Trophy className="h-5 w-5 text-sold" strokeWidth={1.75} />
+                    </span>
+                    <CardTitle className="font-head-arena text-lg tracking-tight sm:text-xl">
+                      Sold <span className={ARENA_GRADIENT_TEXT}>players</span>
+                    </CardTitle>
                     <Badge className="bg-sold/15 text-sold hover:bg-sold/20 border-sold/30">
                       {soldPlayers.length} total
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    Player, winning team, and points — updates live during the auction.
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    Player, winning team, and points — this table updates as sales complete.
                   </p>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -769,13 +996,19 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                           </p>
                         </div>
                       ) : (
-                        <div className="overflow-x-auto rounded-lg border border-border/60">
+                        <div className={ARENA_TABLE_FRAME}>
                           <Table>
-                            <TableHeader>
-                              <TableRow className="border-border/60 hover:bg-transparent">
-                                <TableHead className="w-[40%] text-foreground">Player</TableHead>
-                                <TableHead className="text-foreground">Sold to</TableHead>
-                                <TableHead className="text-right text-foreground">Points</TableHead>
+                            <TableHeader className="bg-gradient-to-b from-white/[0.05] to-transparent [&_tr]:border-white/[0.06]">
+                              <TableRow className="hover:bg-transparent">
+                                <TableHead className="w-[40%] font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                  Player
+                                </TableHead>
+                                <TableHead className="font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                  Sold to
+                                </TableHead>
+                                <TableHead className="text-right font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                  Points
+                                </TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -806,16 +1039,24 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
 
           {/* Right Column - Teams */}
           <div>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Teams
+            <Card className={cn(VIEWER_SURFACE, "overflow-hidden")}>
+              <CardHeader
+                className={cn(ARENA_CARD_HEADER, "relative border-b border-white/[0.06] px-5 py-4 sm:py-5")}
+              >
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/25 to-transparent" />
+                <CardTitle className="flex items-center gap-3 font-head-arena text-base tracking-tight">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 shadow-inner ring-1 ring-primary/10">
+                    <Users className="h-4 w-4 text-arena-cyan" strokeWidth={1.75} />
+                  </span>
+                  Team <span className={ARENA_GRADIENT_TEXT}>purses</span>
                 </CardTitle>
+                <CardDescription className="mt-1 text-xs leading-relaxed sm:text-sm">
+                  Select a team for their sold roster. The current high bidder glows cyan.
+                </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
-                <ScrollArea className="h-[600px]">
-                  <div className="p-4 flex flex-col gap-3">
+                <ScrollArea className="h-[min(600px,70vh)] lg:h-[600px]">
+                  <div className="flex flex-col gap-3 p-4">
                     {teamsLive.map((team) => {
                       const budgetPercent = (team.remainingBudget / team.totalBudget) * 100;
                       const isLeading = stateLite?.currentTeamId === team._id;
@@ -823,47 +1064,60 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                       return (
                         <div
                           key={team._id ?? team.name}
-                          className={`
-                            p-4 rounded-lg border transition-glow cursor-pointer
-                            ${isLeading ? "border-primary glow-primary bg-primary/5" : ""}
-                            ${selectedTeamId === team._id ? "border-primary bg-primary/10" : ""}
-                          `}
+                          className={cn(
+                            "cursor-pointer rounded-xl border border-white/[0.08] bg-black/25 p-4 shadow-inner ring-1 ring-white/[0.02] transition-all duration-200",
+                            "hover:border-white/15 hover:bg-black/35",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[color-mix(in_oklab,var(--card)_92%,transparent)]",
+                            isLeading && "arena-glow-bid border-primary/40 bg-primary/[0.1]",
+                            selectedTeamId === team._id && "ring-2 ring-primary/45 ring-offset-2 ring-offset-[color-mix(in_oklab,var(--card)_92%,transparent)]"
+                          )}
                           onClick={() => team._id && setSelectedTeamId(team._id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              team._id && setSelectedTeamId(team._id);
+                            }
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`View sold players for ${team.name}`}
                         >
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-semibold">{team.name}</span>
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <span className="font-head-arena text-sm font-bold tracking-tight">{team.name}</span>
                             {isLeading && (
-                              <Badge variant="default" className="text-xs">
+                              <Badge className="shrink-0 border border-primary/35 bg-primary/15 text-[10px] font-bold uppercase tracking-wide text-arena-cyan">
                                 Leading
                               </Badge>
                             )}
                           </div>
-                          <p className="text-xs mt-1 text-muted-foreground">
-                            Captain: {team.captainName || "-"}
+                          <p className="text-[11px] text-muted-foreground">
+                            Captain: {team.captainName || "—"}
                           </p>
-                          <div className="h-2 bg-secondary rounded-full overflow-hidden mb-2">
+                          <div className="mb-2 mt-2 h-2 overflow-hidden rounded-full bg-black/40">
                             <div
-                              className="h-full bg-primary transition-all duration-500"
+                              className="h-full bg-gradient-to-r from-primary to-primary-end transition-all duration-500"
                               style={{ width: `${budgetPercent}%` }}
                             />
                           </div>
-                          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                            <div>
-                              <DollarSign className="h-3 w-3 inline" />
-                              {team.remainingBudget} / {team.totalBudget}
+                          <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
+                            <div className="tabular-nums">
+                              <DollarSign className="mr-0.5 inline h-3 w-3 align-text-bottom text-muted-foreground/80" />
+                              <span className="font-mono font-semibold text-arena-cyan tabular-nums">
+                                {team.remainingBudget}
+                              </span>
+                              <span> / {team.totalBudget}</span>
                             </div>
-                            <div>
-                              <User className="h-3 w-3 inline" />
+                            <div className="tabular-nums">
+                              <User className="mr-0.5 inline h-3 w-3" />
                               {team.playersCount} / {auctionMeta.maxPlayersPerTeam}
                             </div>
                           </div>
-                          <p className="text-xs mt-2 text-muted-foreground">
-                            Max bid:{" "}
-                            <span className="font-medium text-arena-magenta">{team.maxBid}</span>{" "}
-                            pts
+                          <p className="mt-2 text-[11px] text-muted-foreground">
+                            Max bid{" "}
+                            <span className="font-mono font-semibold text-arena-magenta">{team.maxBid}</span> pts
                           </p>
-                          <p className="text-xs mt-2 text-muted-foreground">
-                            Recent bids: {recentBidCounts[team.name] ?? 0}
+                          <p className="mt-1.5 text-[11px] text-muted-foreground">
+                            Recent bids: <span className="font-mono font-medium text-foreground">{recentBidCounts[team.name] ?? 0}</span>
                           </p>
                         </div>
                       );
@@ -874,47 +1128,70 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
             </Card>
           </div>
         </div>
+        </div>
       </main>
 
-      <footer className="mt-auto border-t border-border/60 bg-card/50 py-6 backdrop-blur-md">
-        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>Designed and Developed By Kuldeep Ahir</p>
+      <footer className="mt-auto border-t border-white/[0.06] bg-black/20 py-8 backdrop-blur-md">
+        <div className="container mx-auto max-w-7xl px-4 text-center sm:px-6">
+          <p className="font-head-arena text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+            AuctionArena
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Designed and developed by Kuldeep Ahir
+          </p>
         </div>
       </footer>
 
       <Dialog open={!!selectedTeamId} onOpenChange={(open) => !open && setSelectedTeamId(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedTeamName ? `Sold Players - ${selectedTeamName}` : "Sold Players"}
+        <DialogContent className={cn(ARENA_DIALOG_SURFACE, "max-w-2xl gap-0 overflow-hidden p-0")}>
+          <DialogHeader className="border-b border-white/[0.08] px-6 py-5 text-left">
+            <DialogTitle className="font-head-arena text-xl tracking-tight">
+              {selectedTeamName ? (
+                <span className={cn(ARENA_GRADIENT_TEXT, "block max-w-full truncate")}>{selectedTeamName}</span>
+              ) : (
+                "Sold players"
+              )}
             </DialogTitle>
-            <DialogDescription>
-              Team-wise sold player list.
+            <DialogDescription className="text-sm leading-relaxed">
+              Everyone this team has bought so far in this auction.
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-[60vh] overflow-auto">
+          <div className="max-h-[min(60vh,480px)] overflow-auto px-4 py-4">
             {selectedTeamSoldPlayers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No sold players for this team.</p>
+              <p className="rounded-xl border border-dashed border-white/10 bg-black/15 py-10 text-center text-sm text-muted-foreground">
+                No sold players for this team yet.
+              </p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Player</TableHead>
-                    <TableHead className="text-right">Points</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {selectedTeamSoldPlayers.map((p) => (
-                    <TableRow key={p._id}>
-                      <TableCell className="font-medium">{p.name}</TableCell>
-                      <TableCell className="text-right">
-                        {typeof p.soldPrice === "number" ? p.soldPrice : "-"}
-                      </TableCell>
+              <div className={ARENA_TABLE_FRAME}>
+                <Table>
+                  <TableHeader className="bg-gradient-to-b from-white/[0.06] to-transparent [&_tr]:border-white/[0.06]">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Player
+                      </TableHead>
+                      <TableHead className="text-right font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Points
+                      </TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedTeamSoldPlayers.map((p) => (
+                      <TableRow key={p._id} className="border-white/[0.05] hover:bg-sold/5">
+                        <TableCell className="px-4 py-3 font-semibold">{p.name}</TableCell>
+                        <TableCell className="px-4 py-3 text-right font-mono tabular-nums text-sold">
+                          {typeof p.soldPrice === "number" ? p.soldPrice : "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
+          </div>
+          <div className="border-t border-white/[0.08] px-6 py-3">
+            <Button variant="outline" className={ARENA_BTN_OUTLINE} onClick={() => setSelectedTeamId(null)}>
+              Close
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -22,3 +22,19 @@ export const ARENA_BTN_MAGENTA =
 /** Subtle outline control on arena panels */
 export const ARENA_BTN_OUTLINE =
   "border-border/80 bg-secondary/35 hover:bg-secondary/55";
+
+/** Manage auction hero — inner highlight + soft outer depth */
+export const ARENA_MANAGE_HERO =
+  "rounded-3xl border border-white/[0.08] bg-gradient-to-br from-primary/[0.09] via-[var(--arena-glass)] to-arena-magenta/[0.07] shadow-[0_24px_80px_-24px_rgba(0,0,0,0.75),inset_0_1px_0_0_rgba(255,255,255,0.06)] ring-1 ring-white/[0.04]";
+
+/** Unified workspace around tabs + tables */
+export const ARENA_WORKSPACE_SHELL =
+  "rounded-[1.35rem] border border-white/[0.07] bg-[color-mix(in_oklab,var(--arena-glass)_85%,transparent)] p-2 shadow-[0_28px_90px_-32px_rgba(0,0,0,0.85)] backdrop-blur-xl sm:p-3";
+
+/** Table / list frame */
+export const ARENA_TABLE_FRAME =
+  "overflow-hidden rounded-xl border border-white/[0.06] bg-black/[0.22] shadow-inner";
+
+/** Modal polish */
+export const ARENA_DIALOG_SURFACE =
+  "border-white/10 bg-[color-mix(in_oklab,var(--card)_92%,transparent)] shadow-2xl shadow-black/50 backdrop-blur-xl";
