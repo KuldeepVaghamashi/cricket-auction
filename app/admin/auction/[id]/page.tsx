@@ -35,6 +35,7 @@ import {
   User,
   DollarSign,
   UserPlus,
+  Pencil,
 } from "lucide-react";
 import type { AuctionWithId, TeamWithStats, PlayerWithId } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -103,6 +104,11 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
     teamName: string | null;
   }>({ open: false, teamId: null, teamName: null });
   const [assignPlayerId, setAssignPlayerId] = useState<string>("");
+  const [editPlayerDialogOpen, setEditPlayerDialogOpen] = useState(false);
+  const [editPlayerId, setEditPlayerId] = useState<string | null>(null);
+  const [editPlayerName, setEditPlayerName] = useState("");
+  const [editPlayerPhone, setEditPlayerPhone] = useState("");
+  const [editPlayerBasePrice, setEditPlayerBasePrice] = useState("");
 
   const handleAddTeam = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,6 +168,41 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
     await fetch(`/api/auctions/${id}/players/${playerId}`, { method: "DELETE" });
     mutatePlayers();
     mutateTeams();
+  };
+
+  const openEditPlayer = (player: PlayerWithId) => {
+    setEditPlayerId(player._id);
+    setEditPlayerName(player.name);
+    setEditPlayerPhone(player.phone ?? "");
+    setEditPlayerBasePrice(String(player.basePrice));
+    setEditPlayerDialogOpen(true);
+  };
+
+  const handleSaveEditPlayer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editPlayerId) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/auctions/${id}/players/${editPlayerId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editPlayerName,
+          phone: editPlayerPhone,
+          basePrice: Number(editPlayerBasePrice),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        alert(typeof data?.error === "string" ? data.error : "Failed to update player");
+        return;
+      }
+      mutatePlayers();
+      setEditPlayerDialogOpen(false);
+      setEditPlayerId(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleStartAuction = async () => {
@@ -713,7 +754,9 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                           <TableHead className="text-right">Base Price</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead className="text-right">Sold Price</TableHead>
-                          {auction.status === "draft" && <TableHead></TableHead>}
+                          {auction.status === "draft" && (
+                            <TableHead className="text-right">Actions</TableHead>
+                          )}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -765,14 +808,29 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                               </TableCell>
                               {auction.status === "draft" && (
                                 <TableCell className="text-right">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleDeletePlayer(player._id)}
-                                    className="text-destructive hover:text-destructive"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
+                                  <div className="flex justify-end gap-1">
+                                    {player.status === "available" && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        type="button"
+                                        onClick={() => openEditPlayer(player)}
+                                        title="Edit player"
+                                        className="text-muted-foreground hover:text-primary"
+                                      >
+                                        <Pencil className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      type="button"
+                                      onClick={() => handleDeletePlayer(player._id)}
+                                      className="text-destructive hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 </TableCell>
                               )}
                             </TableRow>
@@ -831,6 +889,73 @@ export default function AuctionManagePage({ params }: { params: Promise<{ id: st
                 </Table>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={editPlayerDialogOpen}
+          onOpenChange={(open) => {
+            setEditPlayerDialogOpen(open);
+            if (!open) setEditPlayerId(null);
+          }}
+        >
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Edit player</DialogTitle>
+              <DialogDescription>
+                Change name, phone, or base price while the auction is in draft. Leave phone blank to remove it.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSaveEditPlayer} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="editPlayerName">Player name</Label>
+                <Input
+                  id="editPlayerName"
+                  value={editPlayerName}
+                  onChange={(e) => setEditPlayerName(e.target.value)}
+                  required
+                  minLength={2}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="editPlayerPhone">Phone (optional)</Label>
+                <Input
+                  id="editPlayerPhone"
+                  type="tel"
+                  inputMode="numeric"
+                  value={editPlayerPhone}
+                  onChange={(e) => setEditPlayerPhone(e.target.value)}
+                  placeholder="10–15 digits, or leave blank"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="editPlayerBasePrice">Base price</Label>
+                <Input
+                  id="editPlayerBasePrice"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={editPlayerBasePrice}
+                  onChange={(e) => setEditPlayerBasePrice(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setEditPlayerDialogOpen(false);
+                    setEditPlayerId(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={loading}>
+                  {loading ? "Saving…" : "Save"}
+                </Button>
+              </div>
+            </form>
           </DialogContent>
         </Dialog>
 
