@@ -49,19 +49,18 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
 
-    // Parse datetime-local string as UTC
-    // datetime-local format: "YYYY-MM-DDTHH:mm" (no timezone info)
-    // Store as UTC so it displays consistently across all viewers
+    // Parse datetime-local string as UTC (YYYY-MM-DDTHH:mm) so scheduled time is preserved.
     let parsedDate: Date;
     if (typeof date === "string" && date.includes("T")) {
-      // Parse the datetime-local string and treat it as UTC
       const [datePart, timePart] = date.split("T");
       const [year, month, day] = datePart.split("-").map(Number);
       const [hours, minutes] = timePart.split(":").map(Number);
-      // Use UTC to ensure the exact time entered is preserved
       parsedDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
     } else {
       parsedDate = new Date(date);
+    }
+    if (Number.isNaN(parsedDate.getTime())) {
+      return NextResponse.json({ error: "Invalid auction start date" }, { status: 400 });
     }
 
     const auction: Auction = {

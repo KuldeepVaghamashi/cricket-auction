@@ -4,85 +4,98 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(0.13 0.01 260);
-  --foreground: oklch(0.98 0 0);
-  --card: oklch(0.17 0.01 260);
-  --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.17 0.01 260);
-  --popover-foreground: oklch(0.98 0 0);
-  --primary: oklch(0.65 0.2 145);
-  --primary-foreground: oklch(0.13 0.01 260);
-  --secondary: oklch(0.22 0.01 260);
-  --secondary-foreground: oklch(0.98 0 0);
-  --muted: oklch(0.22 0.01 260);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.65 0.2 145);
-  --accent-foreground: oklch(0.13 0.01 260);
-  --destructive: oklch(0.55 0.22 25);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.28 0.01 260);
-  --input: oklch(0.22 0.01 260);
-  --ring: oklch(0.65 0.2 145);
-  --chart-1: oklch(0.65 0.2 145);
-  --chart-2: oklch(0.6 0.15 200);
-  --chart-3: oklch(0.7 0.18 60);
-  --chart-4: oklch(0.55 0.2 280);
-  --chart-5: oklch(0.6 0.2 25);
+  /* Core surfaces — cool slate aligned with arena shell */
+  --background: oklch(0.14 0.012 265);
+  --foreground: oklch(0.97 0.008 265);
+  --card: oklch(0.175 0.014 265);
+  --card-foreground: oklch(0.97 0.008 265);
+  --popover: oklch(0.175 0.014 265);
+  --popover-foreground: oklch(0.97 0.008 265);
+  /* Brand: arena cyan (matches --arena-cyan) */
+  --primary: oklch(0.76 0.13 211);
+  --primary-foreground: oklch(0.14 0.035 250);
+  --primary-end: oklch(0.63 0.11 218);
+  --secondary: oklch(0.22 0.012 265);
+  --secondary-foreground: oklch(0.97 0.008 265);
+  --muted: oklch(0.22 0.012 265);
+  --muted-foreground: oklch(0.66 0.02 265);
+  --accent: oklch(0.76 0.13 211);
+  --accent-foreground: oklch(0.14 0.035 250);
+  --destructive: oklch(0.58 0.2 25);
+  --destructive-foreground: oklch(0.98 0.01 265);
+  --border: oklch(0.3 0.014 265);
+  --input: oklch(0.22 0.012 265);
+  --ring: oklch(0.76 0.13 211);
+  --chart-1: oklch(0.76 0.13 211);
+  --chart-2: oklch(0.7 0.1 228);
+  --chart-3: oklch(0.78 0.12 58);
+  --chart-4: oklch(0.62 0.26 330);
+  --chart-5: oklch(0.58 0.2 25);
   --radius: 0.625rem;
-  --sidebar: oklch(0.15 0.01 260);
-  --sidebar-foreground: oklch(0.98 0 0);
-  --sidebar-primary: oklch(0.65 0.2 145);
-  --sidebar-primary-foreground: oklch(0.13 0.01 260);
-  --sidebar-accent: oklch(0.22 0.01 260);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.28 0.01 260);
-  --sidebar-ring: oklch(0.65 0.2 145);
-  
-  /* Custom auction colors */
-  --sold: oklch(0.65 0.2 145);
-  --unsold: oklch(0.55 0.22 25);
-  --available: oklch(0.6 0.15 200);
-  --glow: oklch(0.65 0.2 145 / 0.5);
+  --sidebar: oklch(0.155 0.012 265);
+  --sidebar-foreground: oklch(0.97 0.008 265);
+  --sidebar-primary: oklch(0.76 0.13 211);
+  --sidebar-primary-foreground: oklch(0.14 0.035 250);
+  --sidebar-accent: oklch(0.22 0.012 265);
+  --sidebar-accent-foreground: oklch(0.97 0.008 265);
+  --sidebar-border: oklch(0.3 0.014 265);
+  --sidebar-ring: oklch(0.76 0.13 211);
+
+  /* Auction semantics — harmonize with brand cyan + magenta */
+  --sold: oklch(0.72 0.13 165);
+  --unsold: oklch(0.78 0.12 58);
+  --available: oklch(0.72 0.1 228);
+  --glow: oklch(0.76 0.13 211 / 0.45);
+
+  /* Auction Arena shell */
+  --arena-bg: oklch(0.13 0.014 265);
+  --arena-cyan: oklch(0.82 0.12 211);
+  --arena-magenta: oklch(0.62 0.29 330);
+  --arena-magenta-end: oklch(0.48 0.22 330);
+  --arena-glass: color-mix(in oklab, oklch(0.2 0.02 265) 72%, transparent);
+  --arena-border: color-mix(in oklab, oklch(1 0 0) 6%, transparent);
+  --arena-header-tint: color-mix(in oklab, var(--background) 85%, transparent);
 }
 
 .dark {
-  --background: oklch(0.13 0.01 260);
-  --foreground: oklch(0.98 0 0);
-  --card: oklch(0.17 0.01 260);
-  --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.17 0.01 260);
-  --popover-foreground: oklch(0.98 0 0);
-  --primary: oklch(0.65 0.2 145);
-  --primary-foreground: oklch(0.13 0.01 260);
-  --secondary: oklch(0.22 0.01 260);
-  --secondary-foreground: oklch(0.98 0 0);
-  --muted: oklch(0.22 0.01 260);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.65 0.2 145);
-  --accent-foreground: oklch(0.13 0.01 260);
-  --destructive: oklch(0.55 0.22 25);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.28 0.01 260);
-  --input: oklch(0.22 0.01 260);
-  --ring: oklch(0.65 0.2 145);
-  --chart-1: oklch(0.65 0.2 145);
-  --chart-2: oklch(0.6 0.15 200);
-  --chart-3: oklch(0.7 0.18 60);
-  --chart-4: oklch(0.55 0.2 280);
-  --chart-5: oklch(0.6 0.2 25);
-  --sidebar: oklch(0.15 0.01 260);
-  --sidebar-foreground: oklch(0.98 0 0);
-  --sidebar-primary: oklch(0.65 0.2 145);
-  --sidebar-primary-foreground: oklch(0.13 0.01 260);
-  --sidebar-accent: oklch(0.22 0.01 260);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.28 0.01 260);
-  --sidebar-ring: oklch(0.65 0.2 145);
+  --background: oklch(0.14 0.012 265);
+  --foreground: oklch(0.97 0.008 265);
+  --card: oklch(0.175 0.014 265);
+  --card-foreground: oklch(0.97 0.008 265);
+  --popover: oklch(0.175 0.014 265);
+  --popover-foreground: oklch(0.97 0.008 265);
+  --primary: oklch(0.76 0.13 211);
+  --primary-foreground: oklch(0.14 0.035 250);
+  --primary-end: oklch(0.63 0.11 218);
+  --secondary: oklch(0.22 0.012 265);
+  --secondary-foreground: oklch(0.97 0.008 265);
+  --muted: oklch(0.22 0.012 265);
+  --muted-foreground: oklch(0.66 0.02 265);
+  --accent: oklch(0.76 0.13 211);
+  --accent-foreground: oklch(0.14 0.035 250);
+  --destructive: oklch(0.58 0.2 25);
+  --destructive-foreground: oklch(0.98 0.01 265);
+  --border: oklch(0.3 0.014 265);
+  --input: oklch(0.22 0.012 265);
+  --ring: oklch(0.76 0.13 211);
+  --chart-1: oklch(0.76 0.13 211);
+  --chart-2: oklch(0.7 0.1 228);
+  --chart-3: oklch(0.78 0.12 58);
+  --chart-4: oklch(0.62 0.26 330);
+  --chart-5: oklch(0.58 0.2 25);
+  --sidebar: oklch(0.155 0.012 265);
+  --sidebar-foreground: oklch(0.97 0.008 265);
+  --sidebar-primary: oklch(0.76 0.13 211);
+  --sidebar-primary-foreground: oklch(0.14 0.035 250);
+  --sidebar-accent: oklch(0.22 0.012 265);
+  --sidebar-accent-foreground: oklch(0.97 0.008 265);
+  --sidebar-border: oklch(0.3 0.014 265);
+  --sidebar-ring: oklch(0.76 0.13 211);
 }
 
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback';
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --font-sans: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -102,6 +115,10 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-primary-end: var(--primary-end);
+  --color-arena-cyan: var(--arena-cyan);
+  --color-arena-magenta: var(--arena-magenta);
+  --color-arena-magenta-end: var(--arena-magenta-end);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -130,8 +147,106 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans antialiased;
   }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-sans tracking-tight;
+  }
+}
+
+/* Admin “Auction Arena” shell: fixed gradient + no heavy full-screen blur */
+.arena-page {
+  background-color: var(--arena-bg);
+  background-image:
+    radial-gradient(ellipse 80% 60% at 0% 0%, oklch(0.76 0.13 211 / 0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 100% 100%, oklch(0.62 0.26 330 / 0.06) 0%, transparent 60%),
+    radial-gradient(circle at 50% 50%, oklch(0.76 0.13 211 / 0.025) 0%, transparent 70%);
+  background-attachment: fixed;
+  color: oklch(0.93 0.015 265);
+}
+
+/* Same family as landing (Outfit) — one typographic voice app-wide */
+.font-head-arena {
+  font-family: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* Marketing, auth, public viewer — soft brand wash (lighter than .arena-page) */
+.app-public-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--background);
+  background-image:
+    radial-gradient(ellipse 100% 85% at 50% -35%, oklch(0.76 0.13 211 / 0.13), transparent 58%),
+    radial-gradient(ellipse 55% 45% at 105% 85%, oklch(0.62 0.26 330 / 0.1), transparent 55%),
+    radial-gradient(ellipse 50% 35% at -5% 95%, oklch(0.76 0.13 211 / 0.05), transparent 50%);
+  background-attachment: fixed;
+}
+
+.app-public-shell ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.app-public-shell ::-webkit-scrollbar-track {
+  background: oklch(0.16 0.012 265);
+}
+.app-public-shell ::-webkit-scrollbar-thumb {
+  background: oklch(0.32 0.02 265);
+  border-radius: 6px;
+}
+
+/* Public viewer — slightly richer depth, still readable */
+.viewer-page-root {
+  background-image:
+    radial-gradient(ellipse 90% 70% at 50% -30%, oklch(0.76 0.13 211 / 0.11), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 100% 0%, oklch(0.62 0.26 330 / 0.08), transparent 50%),
+    radial-gradient(ellipse 45% 35% at 0% 100%, oklch(0.76 0.13 211 / 0.06), transparent 50%);
+}
+
+.app-glass-header {
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
+  background-color: color-mix(in oklab, var(--card) 82%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* Elevated surface for hero / auth cards */
+.app-surface-card {
+  border-radius: calc(var(--radius) + 6px);
+  border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
+  background: color-mix(in oklab, var(--card) 92%, transparent);
+  box-shadow:
+    0 1px 0 color-mix(in oklab, oklch(1 0 0) 6%, transparent),
+    0 24px 48px -24px oklch(0 0 0 / 0.45),
+    0 0 0 1px oklch(0.76 0.13 211 / 0.06);
+}
+
+.arena-page ::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.arena-page ::-webkit-scrollbar-track {
+  background: oklch(0.18 0.012 265);
+}
+.arena-page ::-webkit-scrollbar-thumb {
+  background: oklch(0.3 0.02 265);
+  border-radius: 4px;
+}
+
+/* Primary-tinted header / nav rule (replaces per-file rgba) */
+.arena-top-edge {
+  box-shadow: 0 1px 0 oklch(0.76 0.13 211 / 0.09);
+}
+
+/* Softer glow for live bid highlight */
+.arena-glow-bid {
+  box-shadow:
+    0 0 20px oklch(0.76 0.13 211 / 0.2),
+    0 0 40px oklch(0.76 0.13 211 / 0.07);
 }
 
 /* Glow effect for leading team */

@@ -6,6 +6,7 @@ import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { Auction, Player, Team } from "@/lib/types";
 import { generateAuctionResultsPdf, type PdfTeam } from "@/lib/generateAuctionResultsPdf";
+import { getPdfThemeForTeamIndex } from "@/lib/pdfTeamThemes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,48 +66,21 @@ export async function GET(
       soldByTeam.set(teamId, list);
     }
 
+    const allTeamsForPalette =
+      teamObjectId !== null
+        ? await db.collection<Team>("teams").find({ auctionId }).toArray()
+        : teams;
+    const sortedPalette = [...allTeamsForPalette].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const pdfThemeIndexByTeamId = new Map<string, number>();
+    sortedPalette.forEach((t, i) => {
+      if (t._id) pdfThemeIndexByTeamId.set(t._id.toString(), i);
+    });
+
     // Use your provided dark IPL design (one page per team).
     const getTeamShort = (name: string) => {
       const parts = name.split(" ").filter(Boolean);
       if (parts.length === 1) return parts[0].slice(0, 3).toUpperCase();
       return parts.map((p) => p[0]).join("").toUpperCase();
-    };
-
-    const stableHashPdf = (s: string) => {
-      let h = 0;
-      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-      return h;
-    };
-
-    const THEME_PRESETS: Record<
-      string,
-      { colorPrimary: string; colorSecondary: string; colorAccent: string }
-    > = {
-      "Mumbai Warriors": {
-        colorPrimary: "#1D4ED8",
-        colorSecondary: "#0891B2",
-        colorAccent: "#1D4ED8",
-      },
-      "Chennai Super Kings": {
-        colorPrimary: "#F59E0B",
-        colorSecondary: "#EA580C",
-        colorAccent: "#F59E0B",
-      },
-    };
-
-    const THEME_FALLBACK: Array<{ colorPrimary: string; colorSecondary: string; colorAccent: string }> = [
-      { colorPrimary: "#1D4ED8", colorSecondary: "#0891B2", colorAccent: "#1D4ED8" },
-      { colorPrimary: "#F59E0B", colorSecondary: "#EA580C", colorAccent: "#F59E0B" },
-      { colorPrimary: "#7C3AED", colorSecondary: "#5B21B6", colorAccent: "#7C3AED" },
-      { colorPrimary: "#DC2626", colorSecondary: "#991B1B", colorAccent: "#DC2626" },
-      { colorPrimary: "#16A34A", colorSecondary: "#15803D", colorAccent: "#16A34A" },
-      { colorPrimary: "#0EA5E9", colorSecondary: "#0369A1", colorAccent: "#0EA5E9" },
-    ];
-
-    const getPdfTheme = (teamName: string) => {
-      if (THEME_PRESETS[teamName]) return THEME_PRESETS[teamName];
-      const idx = stableHashPdf(teamName) % THEME_FALLBACK.length;
-      return THEME_FALLBACK[idx];
     };
 
     const teamsSortedPdf = [...teams].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -129,7 +103,7 @@ export async function GET(
         };
       });
 
-      const theme = getPdfTheme(t.name);
+      const theme = getPdfThemeForTeamIndex(pdfThemeIndexByTeamId.get(teamIdKey) ?? 0);
       return {
         name: t.name,
         short: getTeamShort(t.name),
@@ -137,6 +111,7 @@ export async function GET(
         colorPrimary: theme.colorPrimary,
         colorSecondary: theme.colorSecondary,
         colorAccent: theme.colorAccent,
+        colorPoints: theme.colorPoints,
         players,
       };
     });

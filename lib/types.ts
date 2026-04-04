@@ -32,6 +32,10 @@ export interface Player {
   status: "available" | "sold" | "unsold";
   soldTo?: ObjectId;
   soldPrice?: number;
+  /** Digits-only phone from public self-registration link */
+  phone?: string;
+  /** Added via /auction/[id]/register (not admin form) */
+  selfRegistered?: boolean;
   // When a player is selected again in the "unsold replay" phase,
   // we mark it so it doesn't appear repeatedly.
   unsoldReplayed?: boolean;

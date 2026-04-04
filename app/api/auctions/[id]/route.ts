@@ -63,7 +63,13 @@ export async function PUT(
     };
 
     if (body.name) updateData.name = body.name;
-    if (body.date) updateData.date = new Date(body.date);
+    if (body.date) {
+      const d = new Date(body.date);
+      if (Number.isNaN(d.getTime())) {
+        return NextResponse.json({ error: "Invalid auction start date" }, { status: 400 });
+      }
+      updateData.date = d;
+    }
     if (body.budget) updateData.budget = Number(body.budget);
     if (body.minIncrement) updateData.minIncrement = Number(body.minIncrement);
     if (body.minBid) updateData.minBid = Number(body.minBid);

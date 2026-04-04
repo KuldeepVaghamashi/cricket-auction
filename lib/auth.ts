@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import { ObjectId } from "mongodb";
 import { cookies } from "next/headers";
 import { getDb } from "./mongodb";
 import type { Admin } from "./types";
@@ -30,18 +31,21 @@ export function verifyToken(token: string): { adminId: string } | null {
 export async function getAdminFromToken(): Promise<Admin | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get("auth_token")?.value;
-  
+
   if (!token) return null;
-  
+
   const payload = verifyToken(token);
-  if (!payload) return null;
-  
-  const db = await getDb();
-  const admin = await db.collection<Admin>("admins").findOne({ 
-    _id: new (await import("mongodb")).ObjectId(payload.adminId) 
-  });
-  
-  return admin;
+  if (!payload?.adminId || !ObjectId.isValid(payload.adminId)) return null;
+
+  try {
+    const db = await getDb();
+    const admin = await db.collection<Admin>("admins").findOne({
+      _id: new ObjectId(payload.adminId),
+    });
+    return admin;
+  } catch {
+    return null;
+  }
 }
 
 export async function isAuthenticated(): Promise<boolean> {
@@ -53,7 +57,7 @@ export async function isAuthenticated(): Promise<boolean> {
 export async function initializeDefaultAdmin(): Promise<void> {
   const db = await getDb();
   const adminCount = await db.collection("admins").countDocuments();
-  
+
   if (adminCount === 0) {
     const passwordHash = await hashPassword("admin123");
     await db.collection<Admin>("admins").insertOne({
@@ -62,4 +66,41 @@ export async function initializeDefaultAdmin(): Promise<void> {
       createdAt: new Date(),
     });
   }
+}
+
+/** Shared by POST /api/auth/login and the login server action. */
+export async function attemptAdminLogin(
+  username: string,
+  password: string
+): Promise<{ ok: true; token: string } | { ok: false; error: string }> {
+  const u = username?.trim() ?? "";
+  if (!u || !password) {
+    return { ok: false, error: "Username and password are required" };
+  }
+
+  await initializeDefaultAdmin();
+
+  const db = await getDb();
+  const admin = await db.collection<Admin>("admins").findOne({ username: u });
+
+  if (!admin) {
+    return { ok: false, error: "Invalid credentials" };
+  }
+
+  const hash = admin.passwordHash;
+  if (typeof hash !== "string" || !hash) {
+    return { ok: false, error: "Invalid credentials" };
+  }
+
+  const isValid = await verifyPassword(password, hash);
+  if (!isValid) {
+    return { ok: false, error: "Invalid credentials" };
+  }
+
+  const id = admin._id?.toString();
+  if (!id) {
+    return { ok: false, error: "Invalid credentials" };
+  }
+
+  return { ok: true, token: generateToken(id) };
 }
