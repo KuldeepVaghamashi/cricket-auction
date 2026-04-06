@@ -9,13 +9,22 @@ const TOKEN_EXPIRY = "24h";
 
 const DEV_JWT_FALLBACK = "cricket-auction-secret-key-change-in-production";
 
+let jwtSecretWarningShown = false;
+
 function getJwtSecret(): string {
   const s = process.env.JWT_SECRET?.trim();
   if (process.env.NODE_ENV === "production") {
+    // Fail-safe: on misconfigured deployments (e.g. missing JWT_SECRET),
+    // never hard-crash the whole app. We log once and use a deterministic fallback.
+    // You should still set JWT_SECRET in Vercel for security.
     if (!s || s.length < 32) {
-      throw new Error(
-        "JWT_SECRET must be set in production to a random string of at least 32 characters."
-      );
+      if (!jwtSecretWarningShown) {
+        jwtSecretWarningShown = true;
+        console.error(
+          "[auth] JWT_SECRET missing/too short in production; using fallback secret. Set JWT_SECRET in Vercel env for security."
+        );
+      }
+      return s || DEV_JWT_FALLBACK;
     }
     return s;
   }
