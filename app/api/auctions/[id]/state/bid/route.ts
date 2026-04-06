@@ -169,7 +169,8 @@ export async function POST(
       console.error("Bid log insert failed:", error);
     });
 
-    notifyAuctionSubscribers(id, ["a"]);
+    // Bid affects only auction state (current bid/team + bid history) and logs.
+    notifyAuctionSubscribers(id, ["st", "lg"]);
 
     return NextResponse.json({
       success: true,

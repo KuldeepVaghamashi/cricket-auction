@@ -101,7 +101,9 @@ export async function POST(
       timestamp: new Date(),
     });
 
-    notifyAuctionSubscribers(id, ["a"]);
+    // Picking a new player changes auction state (current player + base bid) and logs.
+    // Teams/roster/purses do not change until completion.
+    notifyAuctionSubscribers(id, ["st", "lg"]);
 
     return NextResponse.json({
       success: true,

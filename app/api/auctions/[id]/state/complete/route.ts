@@ -176,7 +176,12 @@ export async function POST(
       }
     );
 
-    notifyAuctionSubscribers(id, ["a"]);
+    // Completion updates:
+    // - sold: auction state + team purses + player statuses + logs
+    // - unsold: auction state + player statuses + logs (teams do not change)
+    const scopes =
+      action === "sold" ? (["st", "tm", "pl", "lg"] as const) : (["st", "pl", "lg"] as const);
+    notifyAuctionSubscribers(id, scopes as any);
 
     return NextResponse.json({
       success: true,

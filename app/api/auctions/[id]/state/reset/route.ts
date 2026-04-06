@@ -72,7 +72,8 @@ export async function POST(
       timestamp: new Date(),
     });
 
-    notifyAuctionSubscribers(id, ["a"]);
+    // Reset affects only auction state (current bid resets) and logs.
+    notifyAuctionSubscribers(id, ["st", "lg"]);
 
     return NextResponse.json({
       success: true,

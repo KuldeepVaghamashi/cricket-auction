@@ -80,7 +80,8 @@ export async function POST(
       timestamp: new Date(),
     }).catch(() => {});
 
-    notifyAuctionSubscribers(id, ["a"]);
+    // Undo affects auction state (bid + history) and logs only.
+    notifyAuctionSubscribers(id, ["st", "lg"]);
 
     return NextResponse.json({
       success: true,

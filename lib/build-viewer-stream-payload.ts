@@ -4,11 +4,16 @@ import { calculateMaxBid } from "@/lib/auction-utils";
 import type { AuctionState, Auction, Team, Player } from "@/lib/types";
 import type { ViewerStreamPayload } from "@/lib/viewer-stream-types";
 
+export type ViewerSnapshotMode = "full" | "state" | "stats";
+
 /**
  * One-shot payload for the public viewer (same fields as SSE stream events).
  * Used by GET viewer-snapshot and triggered after server-side mutations via WebSocket hints.
  */
-export async function buildViewerStreamPayload(auctionId: ObjectId): Promise<ViewerStreamPayload> {
+export async function buildViewerStreamPayload(
+  auctionId: ObjectId,
+  mode: ViewerSnapshotMode = "full"
+): Promise<Partial<ViewerStreamPayload>> {
   const db = await getDb();
 
   const auction = await db.collection<Auction>("auctions").findOne({ _id: auctionId });
@@ -49,39 +54,54 @@ export async function buildViewerStreamPayload(auctionId: ObjectId): Promise<Vie
     }
   );
 
-  const teams = await db
-    .collection<Team>("teams")
-    .find(
-      { auctionId },
-      {
-        projection: {
-          _id: 1,
-          name: 1,
-          captainName: 1,
-          totalBudget: 1,
-          remainingBudget: 1,
-          playersBought: 1,
-        },
-      }
-    )
-    .toArray();
+  const includeTeams = mode === "full";
+  const includePlayerStats = mode === "full" || mode === "stats";
 
-  const teamsWithStats = teams.map((team) => ({
-    _id: team._id?.toString() ?? "",
-    name: team.name,
-    captainName: team.captainName ?? undefined,
-    totalBudget: team.totalBudget,
-    remainingBudget: team.remainingBudget,
-    playersCount: team.playersBought.length,
-    remainingSlots: auction.maxPlayersPerTeam - team.playersBought.length,
-    maxBid: calculateMaxBid(team, auction),
-  }));
+  let teamsWithStats: ViewerStreamPayload["teams"] | undefined = undefined;
+  if (includeTeams) {
+    const teams = await db
+      .collection<Team>("teams")
+      .find(
+        { auctionId },
+        {
+          projection: {
+            _id: 1,
+            name: 1,
+            captainName: 1,
+            totalBudget: 1,
+            remainingBudget: 1,
+            playersBought: 1,
+          },
+        }
+      )
+      .toArray();
 
-  const [availableCount, soldCount, unsoldCount] = await Promise.all([
-    db.collection<Player>("players").countDocuments({ auctionId, status: "available" }),
-    db.collection<Player>("players").countDocuments({ auctionId, status: "sold" }),
-    db.collection<Player>("players").countDocuments({ auctionId, status: "unsold" }),
-  ]);
+    teamsWithStats = teams.map((team) => ({
+      _id: team._id?.toString() ?? "",
+      name: team.name,
+      captainName: team.captainName ?? undefined,
+      totalBudget: team.totalBudget,
+      remainingBudget: team.remainingBudget,
+      playersCount: team.playersBought.length,
+      remainingSlots: auction.maxPlayersPerTeam - team.playersBought.length,
+      maxBid: calculateMaxBid(team, auction),
+    }));
+  }
+
+  let playerStats: ViewerStreamPayload["playerStats"] | undefined = undefined;
+  if (includePlayerStats) {
+    const [availableCount, soldCount, unsoldCount] = await Promise.all([
+      db.collection<Player>("players").countDocuments({ auctionId, status: "available" }),
+      db.collection<Player>("players").countDocuments({ auctionId, status: "sold" }),
+      db.collection<Player>("players").countDocuments({ auctionId, status: "unsold" }),
+    ]);
+
+    playerStats = {
+      available: availableCount,
+      sold: soldCount,
+      unsold: unsoldCount,
+    };
+  }
 
   let currentPlayer: ViewerStreamPayload["currentPlayer"] = null;
   const nextIdRaw = state?.currentPlayerId ?? null;
@@ -108,7 +128,7 @@ export async function buildViewerStreamPayload(auctionId: ObjectId): Promise<Vie
 
   const bidHistorySlice = (state?.bidHistory ?? []).slice(-10);
 
-  return {
+  const result: Partial<ViewerStreamPayload> = {
     auction: {
       _id: auction._id?.toString() ?? "",
       name: auction.name,
@@ -135,12 +155,11 @@ export async function buildViewerStreamPayload(auctionId: ObjectId): Promise<Vie
         }
       : null,
     currentPlayer,
-    teams: teamsWithStats,
-    playerStats: {
-      available: availableCount,
-      sold: soldCount,
-      unsold: unsoldCount,
-    },
     timestamp: new Date().toISOString(),
   };
+
+  if (teamsWithStats) result.teams = teamsWithStats;
+  if (playerStats) result.playerStats = playerStats;
+
+  return result;
 }

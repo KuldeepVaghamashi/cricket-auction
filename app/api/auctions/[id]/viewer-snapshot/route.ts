@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 /** JSON snapshot matching one SSE `data:` frame from /stream — used by WebSocket-driven viewer refresh. */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -15,7 +15,8 @@ export async function GET(
     if (!ObjectId.isValid(id)) {
       return NextResponse.json({ error: "Invalid auction ID" }, { status: 400 });
     }
-    const payload = await buildViewerStreamPayload(new ObjectId(id));
+    const mode = request.nextUrl.searchParams.get("mode") ?? "full";
+    const payload = await buildViewerStreamPayload(new ObjectId(id), mode as any);
     return NextResponse.json(payload, {
       headers: { "Cache-Control": "no-store" },
     });

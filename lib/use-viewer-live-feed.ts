@@ -12,8 +12,21 @@ function devWarn(message: string, err: unknown) {
   }
 }
 
-function needsViewerRefresh(scopes: AuctionInvScope[]) {
-  return scopes.includes("a") || scopes.includes("vw");
+function getSnapshotMode(scopes: AuctionInvScope[]): "full" | "state" | "stats" | null {
+  // Backward compatibility: treat legacy "all" as full refresh.
+  if (scopes.includes("a") || scopes.includes("vw")) return "full";
+
+  // Teams/purses only change on sold completion.
+  if (scopes.includes("tm")) return "full";
+
+  // Player status counts only change when players are completed (sold/unsold).
+  // For unsold we don't change teams, so we can refresh stats only.
+  if (scopes.includes("pl")) return "stats";
+
+  // Bid/reset/pick/undo affect auction state + recent bid history.
+  if (scopes.includes("st") || scopes.includes("lg")) return "state";
+
+  return null;
 }
 
 /**
@@ -30,12 +43,14 @@ export function useViewerLiveFeed(
   const sseModeRef = useRef(false);
   const mutateAuctionRef = useRef(mutateAuction);
   mutateAuctionRef.current = mutateAuction;
+  const lastFullRef = useRef<ViewerStreamPayload | null>(null);
 
   useEffect(() => {
     if (!isActive || !id) {
       sseModeRef.current = false;
       esRef.current?.close();
       esRef.current = null;
+      lastFullRef.current = null;
       setStreamData(null);
       return;
     }
@@ -44,6 +59,7 @@ export function useViewerLiveFeed(
 
     const applyPayload = (parsed: ViewerStreamPayload) => {
       if (cancelled) return;
+      lastFullRef.current = parsed;
       setStreamData(parsed);
       if (parsed.auction?.status && parsed.auction.status !== "active") {
         void mutateAuctionRef.current();
@@ -65,11 +81,33 @@ export function useViewerLiveFeed(
       };
     };
 
-    const fetchSnapshot = async () => {
+    const fetchSnapshot = async (mode: "full" | "state" | "stats") => {
       try {
-        const r = await fetch(`/api/auctions/${id}/viewer-snapshot`, { cache: "no-store" });
-        const j = (await r.json()) as ViewerStreamPayload;
-        applyPayload(j);
+        const r = await fetch(`/api/auctions/${id}/viewer-snapshot?mode=${encodeURIComponent(mode)}`, {
+          cache: "no-store",
+        });
+        const j = (await r.json()) as Partial<ViewerStreamPayload> & { timestamp?: string };
+
+        if (cancelled) return;
+
+        // Merge partial snapshot with the last full snapshot so UI fields like `teams`
+        // and `playerStats` remain stable during state-only updates.
+        const base = lastFullRef.current;
+        if (!base || mode === "full" || !base.teams || !base.playerStats) {
+          const full = j as ViewerStreamPayload;
+          lastFullRef.current = full;
+          setStreamData(full);
+          return;
+        }
+
+        const merged = {
+          ...base,
+          ...j,
+          timestamp: j.timestamp ?? base.timestamp,
+        } as ViewerStreamPayload;
+
+        lastFullRef.current = merged;
+        setStreamData(merged);
       } catch (e) {
         devWarn("Viewer snapshot error:", e);
       }
@@ -78,7 +116,8 @@ export function useViewerLiveFeed(
     const socket = createAuctionLiveSocket({
       auctionId: id,
       onInvalidate: (scopes) => {
-        if (needsViewerRefresh(scopes)) void fetchSnapshot();
+        const mode = getSnapshotMode(scopes);
+        if (mode) void fetchSnapshot(mode);
       },
       onConnectionChange: (connected) => {
         if (cancelled) return;
@@ -86,7 +125,8 @@ export function useViewerLiveFeed(
           sseModeRef.current = false;
           esRef.current?.close();
           esRef.current = null;
-          void fetchSnapshot();
+          // First payload should be full so we have teams + playerStats baseline.
+          void fetchSnapshot("full");
         }
       },
       onPrimaryTransportUnavailable: () => {
