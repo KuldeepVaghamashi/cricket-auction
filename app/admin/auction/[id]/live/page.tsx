@@ -59,6 +59,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAuctionSocket, type AuctionLiveMutators } from "@/lib/use-auction-live-sync";
 
 interface AuctionStateResponse {
   _id: string;
@@ -93,46 +94,53 @@ function getTeamColorClass(_teamId: string | null | undefined) {
   return TEAM_BUDGET_COLOR_CLASS;
 }
 
+const LIVE_FALLBACK_POLL_MS = 12_000;
+
 export default function LiveAuctionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [viewerCopied, setViewerCopied] = useState(false);
   const [poolDialog, setPoolDialog] = useState<null | "available" | "sold" | "unsold">(null);
-  
-  const { data: auction } = useSWR<AuctionWithId>(`/api/auctions/${id}`, fetcher);
+  const [auctionWsConnected, setAuctionWsConnected] = useState(false);
+  const mutatorsRef = useRef<AuctionLiveMutators>({});
+
+  const swrLiveOpts = useMemo(
+    () => ({
+      refreshInterval: auctionWsConnected ? 0 : LIVE_FALLBACK_POLL_MS,
+      revalidateOnFocus: !auctionWsConnected,
+      dedupingInterval: 2000,
+    }),
+    [auctionWsConnected]
+  );
+
+  const { data: auction } = useSWR<AuctionWithId>(`/api/auctions/${id}`, fetcher, swrLiveOpts);
   const { data: teams, mutate: mutateTeams } = useSWR<TeamWithStats[]>(
     `/api/auctions/${id}/teams`,
     fetcher,
-    {
-      refreshInterval: 5000,
-      revalidateOnFocus: true,
-    }
+    swrLiveOpts
   );
   const { data: players, mutate: mutatePlayers } = useSWR<PlayerWithId[]>(
     `/api/auctions/${id}/players`,
     fetcher,
-    {
-      refreshInterval: 5000,
-      revalidateOnFocus: true,
-    }
+    swrLiveOpts
   );
   const { data: state, mutate: mutateState } = useSWR<AuctionStateResponse>(
     `/api/auctions/${id}/state?lite=1`,
     fetcher,
-    {
-      // Sync bids/round across other devices/tabs (local actions still use mutate()).
-      refreshInterval: 2000,
-      dedupingInterval: 1500,
-      revalidateOnFocus: true,
-    }
+    swrLiveOpts
   );
   const { data: logs, mutate: mutateLogs } = useSWR<AuctionLogResponse[]>(
     `/api/auctions/${id}/logs`,
     fetcher,
-    {
-      refreshInterval: 4000,
-      revalidateOnFocus: true,
-    }
+    swrLiveOpts
   );
+
+  mutatorsRef.current = {
+    mutateState,
+    mutateTeams,
+    mutatePlayers,
+    mutateLogs,
+  };
+  useAuctionSocket(id, mutatorsRef, setAuctionWsConnected);
 
   const [loading, setLoading] = useState(false);
   const [bidLoadingTeamId, setBidLoadingTeamId] = useState<string | null>(null);

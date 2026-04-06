@@ -36,8 +36,7 @@ export interface Player {
   phone?: string;
   /** Added via /auction/[id]/register (not admin form) */
   selfRegistered?: boolean;
-  // When a player is selected again in the "unsold replay" phase,
-  // we mark it so it doesn't appear repeatedly.
+  // Legacy replay marker retained for backward compatibility with existing data.
   unsoldReplayed?: boolean;
   createdAt: Date;
 }

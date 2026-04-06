@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { AuctionState, Player, Auction, AuctionLog } from "@/lib/types";
+import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
 
 // POST pick random player
 export async function POST(
@@ -46,10 +47,9 @@ export async function POST(
       .find({ auctionId, status: "available" })
       .toArray();
 
-    // If none are available, start the "unsold replay" round:
-    // pick from unsold players that haven't been replayed yet.
+    // If none are available, keep replaying from the unsold pool
+    // until each player eventually gets sold.
     let selectedPlayer: Player | null = null;
-    let isReplayPick = false;
 
     if (availablePlayers.length > 0) {
       const randomIndex = Math.floor(Math.random() * availablePlayers.length);
@@ -60,8 +60,6 @@ export async function POST(
         .find({
           auctionId,
           status: "unsold",
-          // Undefined field should be treated as "not replayed yet".
-          unsoldReplayed: { $ne: true },
         })
         .toArray();
 
@@ -74,19 +72,6 @@ export async function POST(
 
       const randomIndex = Math.floor(Math.random() * replayCandidates.length);
       selectedPlayer = replayCandidates[randomIndex];
-      isReplayPick = true;
-    }
-
-    // Update auction state
-    const playerUpdate = isReplayPick
-      ? { $set: { unsoldReplayed: true } }
-      : undefined;
-
-    if (playerUpdate) {
-      await db.collection<Player>("players").updateOne(
-        { _id: selectedPlayer._id },
-        playerUpdate
-      );
     }
 
     await db.collection<AuctionState>("auctionStates").updateOne(
@@ -115,6 +100,8 @@ export async function POST(
       },
       timestamp: new Date(),
     });
+
+    notifyAuctionSubscribers(id, ["a"]);
 
     return NextResponse.json({
       success: true,

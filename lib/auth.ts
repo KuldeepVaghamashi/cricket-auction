@@ -5,8 +5,22 @@ import { cookies } from "next/headers";
 import { getDb } from "./mongodb";
 import type { Admin } from "./types";
 
-const JWT_SECRET = process.env.JWT_SECRET || "cricket-auction-secret-key-change-in-production";
 const TOKEN_EXPIRY = "24h";
+
+const DEV_JWT_FALLBACK = "cricket-auction-secret-key-change-in-production";
+
+function getJwtSecret(): string {
+  const s = process.env.JWT_SECRET?.trim();
+  if (process.env.NODE_ENV === "production") {
+    if (!s || s.length < 32) {
+      throw new Error(
+        "JWT_SECRET must be set in production to a random string of at least 32 characters."
+      );
+    }
+    return s;
+  }
+  return s || DEV_JWT_FALLBACK;
+}
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 12);
@@ -17,12 +31,12 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 }
 
 export function generateToken(adminId: string): string {
-  return jwt.sign({ adminId }, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
+  return jwt.sign({ adminId }, getJwtSecret(), { expiresIn: TOKEN_EXPIRY });
 }
 
 export function verifyToken(token: string): { adminId: string } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as { adminId: string };
+    return jwt.verify(token, getJwtSecret()) as { adminId: string };
   } catch {
     return null;
   }

@@ -34,8 +34,8 @@ export async function GET(
         bidHistory: [],
         updatedAt: new Date(),
       };
-      await db.collection<AuctionState>("auctionStates").insertOne(newState);
-      state = newState;
+      const inserted = await db.collection<AuctionState>("auctionStates").insertOne(newState);
+      state = { ...newState, _id: inserted.insertedId };
     }
 
     // Get current player details if exists (project only required fields).

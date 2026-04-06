@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import { validateBid } from "@/lib/auction-utils";
+import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
 import type { AuctionState, Team, Auction, AuctionLog } from "@/lib/types";
 
 const bidThrottleMap = new Map<string, number>();
@@ -167,6 +168,8 @@ export async function POST(
     }).catch((error) => {
       console.error("Bid log insert failed:", error);
     });
+
+    notifyAuctionSubscribers(id, ["a"]);
 
     return NextResponse.json({
       success: true,

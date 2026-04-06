@@ -33,7 +33,8 @@ export async function GET(
       // - Less frequently: refresh heavy data (teams/maxBid + player counts + auction meta).
       const db = await getDb();
       const now = () => Date.now();
-      const TICK_MS = 200;
+      /** SSE fallback tick: checks DB on this interval; pushes only when state changes. */
+      const TICK_MS = 1500;
       const REFRESH_AUCTION_MS = 10000;
       const REFRESH_TEAMS_MS = 4000;
       const REFRESH_STATS_MS = 4000;

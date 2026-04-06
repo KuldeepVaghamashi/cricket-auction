@@ -1,17 +1,34 @@
 /** @type {import('next').NextConfig} */
+const securityHeaders = [
+  { key: "X-DNS-Prefetch-Control", value: "on" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=()",
+  },
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+];
+
 const nextConfig = {
+  poweredByHeader: false,
+  output: "standalone",
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   images: {
     unoptimized: true,
   },
-  // pdfkit expects font metric files (e.g. Helvetica.afm) at runtime.
-  // Ensure Next does not bundle it in a way that drops those files on Vercel.
   serverExternalPackages: ["pdfkit"],
-
-  // Turbopack is default in Next 16; keep config explicit to avoid warnings.
   turbopack: {},
-}
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: securityHeaders,
+      },
+    ];
+  },
+};
 
-export default nextConfig
+export default nextConfig;

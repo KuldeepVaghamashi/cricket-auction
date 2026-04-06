@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { AuctionState, Player, Team, Auction, AuctionLog } from "@/lib/types";
+import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
 
 // POST mark player as sold or unsold
 export async function POST(
@@ -73,12 +74,10 @@ export async function POST(
       return NextResponse.json({ error: "Player not found" }, { status: 404 });
     }
 
-    // Allow completion for:
-    // - initial under-the-hammer players: status === "available"
-    // - unsold replay round players: status === "unsold" and unsoldReplayed === true
+    // Allow completion for both first-time and replayed players.
     const isEligibleForCompletion =
       player.status === "available" ||
-      (player.status === "unsold" && player.unsoldReplayed === true);
+      player.status === "unsold";
 
     if (!isEligibleForCompletion) {
       return NextResponse.json(
@@ -176,6 +175,8 @@ export async function POST(
         },
       }
     );
+
+    notifyAuctionSubscribers(id, ["a"]);
 
     return NextResponse.json({
       success: true,

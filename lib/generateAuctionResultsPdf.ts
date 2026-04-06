@@ -2,6 +2,8 @@ import fs from "fs";
 import path from "path";
 import PDFDocument from "pdfkit";
 
+type PdfKitDoc = InstanceType<typeof PDFDocument>;
+
 // ─── PDF-specific types ───────────────────────────────────────────────────
 
 export interface PdfPlayer {
@@ -43,7 +45,7 @@ const MARGIN = 48;
 
 // ─── Outfit (same family as UI via next/font Outfit) ───────────────────────
 
-function resolvePdfFonts(doc: PDFDocument): PdfFonts {
+function resolvePdfFonts(doc: PdfKitDoc): PdfFonts {
   const dir = path.join(process.cwd(), "lib", "fonts", "outfit");
   const regular = path.join(dir, "Outfit-Regular.ttf");
   const bold = path.join(dir, "Outfit-Bold.ttf");
@@ -58,7 +60,7 @@ function resolvePdfFonts(doc: PDFDocument): PdfFonts {
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 function roundedRect(
-  doc: PDFDocument,
+  doc: PdfKitDoc,
   x: number,
   y: number,
   w: number,
@@ -81,7 +83,7 @@ function roundedRect(
 }
 
 function polygon(
-  doc: PDFDocument,
+  doc: PdfKitDoc,
   points: [number, number][],
   fillHex: string,
   opacity: number
@@ -96,7 +98,7 @@ function polygon(
 }
 
 function centredText(
-  doc: PDFDocument,
+  doc: PdfKitDoc,
   fonts: PdfFonts,
   text: string,
   y: number,
@@ -116,7 +118,7 @@ function centredText(
   doc.restore();
 }
 
-function drawBackground(doc: PDFDocument, team: PdfTeam) {
+function drawBackground(doc: PdfKitDoc, team: PdfTeam) {
   doc.rect(0, 0, A4_W, A4_H).fillColor(SURFACE_BG).fill();
 
   doc.save();
@@ -160,7 +162,7 @@ function drawBackground(doc: PDFDocument, team: PdfTeam) {
   doc.restore();
 }
 
-function drawHeader(doc: PDFDocument, fonts: PdfFonts, team: PdfTeam, tournamentName: string) {
+function drawHeader(doc: PdfKitDoc, fonts: PdfFonts, team: PdfTeam, tournamentName: string) {
   const headerH = 158;
   const bx = MARGIN - 4;
   const bw = A4_W - 2 * MARGIN + 8;
@@ -206,7 +208,7 @@ function drawHeader(doc: PDFDocument, fonts: PdfFonts, team: PdfTeam, tournament
   centredText(doc, fonts, badgeText, badgeY + 12, true, 16, "#FFFFFF");
 }
 
-function drawCaptainBanner(doc: PDFDocument, fonts: PdfFonts, team: PdfTeam) {
+function drawCaptainBanner(doc: PdfKitDoc, fonts: PdfFonts, team: PdfTeam) {
   const by = MARGIN + 172;
   const bh = 44;
   const bx = MARGIN - 4;
@@ -227,7 +229,7 @@ function drawCaptainBanner(doc: PDFDocument, fonts: PdfFonts, team: PdfTeam) {
   centredText(doc, fonts, (team.captain || "—").toUpperCase(), by + 20, true, 13.5, SURFACE_TEXT);
 }
 
-function drawPlayerTable(doc: PDFDocument, fonts: PdfFonts, team: PdfTeam): number {
+function drawPlayerTable(doc: PdfKitDoc, fonts: PdfFonts, team: PdfTeam): number {
   const tableTop = MARGIN + 232;
   const rowH = 40;
   const colW = [32, 348, 108];
@@ -312,7 +314,7 @@ function drawPlayerTable(doc: PDFDocument, fonts: PdfFonts, team: PdfTeam): numb
   return finalY;
 }
 
-function drawFooter(doc: PDFDocument, fonts: PdfFonts, team: PdfTeam, tableBotY: number) {
+function drawFooter(doc: PdfKitDoc, fonts: PdfFonts, team: PdfTeam, tableBotY: number) {
   const total = team.players.reduce((sum, p) => {
     const numeric = p.price.replace(/[^\d.]/g, "");
     const n = parseFloat(numeric);

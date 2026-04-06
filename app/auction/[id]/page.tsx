@@ -48,6 +48,8 @@ import {
   ARENA_MANAGE_HERO,
   ARENA_BTN_OUTLINE,
 } from "@/components/arena/arena-classes";
+import type { ViewerStreamPayload } from "@/lib/viewer-stream-types";
+import { useViewerLiveFeed } from "@/lib/use-viewer-live-feed";
 
 const VIEWER_SURFACE = cn(
   ARENA_GLASS_CARD,
@@ -94,43 +96,6 @@ function ViewerPublicHeader({
   );
 }
 
-/** Payload from GET /api/auctions/[id]/stream (SSE); drives live viewer without polling /state?lite=1 */
-interface StreamPayload {
-  auction: {
-    _id: string;
-    name: string;
-    status: string;
-    minIncrement: number;
-    maxPlayersPerTeam: number;
-  };
-  state: {
-    currentBid: number;
-    currentTeamId: string | null;
-    currentTeamName: string | null;
-    updatedAt: string | null;
-    lastAction: "sold" | "unsold" | null;
-    lastActionAt: string | null;
-    lastActionPlayerName: string | null;
-    lastActionTeamName: string | null;
-    lastActionPrice: number | null;
-    bidHistory: Array<{ teamName: string; amount: number; timestamp?: string }>;
-  } | null;
-  currentPlayer: { _id: string; name: string; basePrice: number } | null;
-  teams: Array<{
-    _id?: string;
-    name: string;
-    captainName?: string;
-    totalBudget: number;
-    remainingBudget: number;
-    playersCount: number;
-    remainingSlots: number;
-    maxBid: number;
-  }>;
-  playerStats: { available: number; sold: number; unsold: number };
-  timestamp: string;
-  error?: string;
-}
-
 const jsonFetcher = async <T,>(url: string): Promise<T> => {
   const res = await fetch(url);
   const data = await res.json();
@@ -147,7 +112,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
   /** Live viewer: which pool list to show above sold players */
   const [poolFilter, setPoolFilter] = useState<"available" | "unsold" | null>(null);
   const soldSectionRef = useRef<HTMLDivElement>(null);
-  const [streamData, setStreamData] = useState<StreamPayload | null>(null);
+  const [streamData, setStreamData] = useState<ViewerStreamPayload | null>(null);
   const [completionAnimation, setCompletionAnimation] = useState<{
     action: "sold" | "unsold";
     at: string;
@@ -183,30 +148,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     }
   );
 
-  useEffect(() => {
-    if (!isActive || !id) {
-      setStreamData(null);
-      return;
-    }
-
-    const es = new EventSource(`/api/auctions/${id}/stream`);
-
-    es.onmessage = (event) => {
-      try {
-        const parsed = JSON.parse(event.data) as StreamPayload;
-        setStreamData(parsed);
-        if (parsed.auction?.status && parsed.auction.status !== "active") {
-          void mutateAuction();
-        }
-      } catch (e) {
-        console.error("SSE parse error:", e);
-      }
-    };
-
-    return () => {
-      es.close();
-    };
-  }, [id, isActive, mutateAuction]);
+  useViewerLiveFeed(id, isActive, mutateAuction, setStreamData);
 
   const prevPlayerIdRef = useRef<string | null>(null);
   useEffect(() => {

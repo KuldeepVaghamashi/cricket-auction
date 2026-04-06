@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { AuctionState, Player, AuctionLog } from "@/lib/types";
+import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
 
 // POST reset current bid
 export async function POST(
@@ -70,6 +71,8 @@ export async function POST(
       },
       timestamp: new Date(),
     });
+
+    notifyAuctionSubscribers(id, ["a"]);
 
     return NextResponse.json({
       success: true,

@@ -19,7 +19,7 @@ export default function AdminLayout({
 
   useEffect(() => {
     const ac = new AbortController();
-    let deadlineId: ReturnType<typeof setTimeout> | undefined;
+    let deadlineId: number | undefined;
 
     const startId = window.setTimeout(() => {
       deadlineId = window.setTimeout(() => ac.abort(), 15_000);

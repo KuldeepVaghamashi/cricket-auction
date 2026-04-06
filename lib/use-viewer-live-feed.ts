@@ -6,6 +6,12 @@ import { createAuctionLiveSocket, type AuctionInvScope } from "@/lib/socket-clie
 import type { ViewerStreamPayload } from "@/lib/viewer-stream-types";
 import type { AuctionWithId } from "@/lib/types";
 
+function devWarn(message: string, err: unknown) {
+  if (process.env.NODE_ENV === "development") {
+    console.warn(message, err);
+  }
+}
+
 function needsViewerRefresh(scopes: AuctionInvScope[]) {
   return scopes.includes("a") || scopes.includes("vw");
 }
@@ -22,6 +28,8 @@ export function useViewerLiveFeed(
 ) {
   const esRef = useRef<EventSource | null>(null);
   const sseModeRef = useRef(false);
+  const mutateAuctionRef = useRef(mutateAuction);
+  mutateAuctionRef.current = mutateAuction;
 
   useEffect(() => {
     if (!isActive || !id) {
@@ -38,7 +46,7 @@ export function useViewerLiveFeed(
       if (cancelled) return;
       setStreamData(parsed);
       if (parsed.auction?.status && parsed.auction.status !== "active") {
-        void mutateAuction();
+        void mutateAuctionRef.current();
       }
     };
 
@@ -52,7 +60,7 @@ export function useViewerLiveFeed(
         try {
           applyPayload(JSON.parse(event.data) as ViewerStreamPayload);
         } catch (e) {
-          console.error("SSE parse error:", e);
+          devWarn("SSE parse error:", e);
         }
       };
     };
@@ -63,7 +71,7 @@ export function useViewerLiveFeed(
         const j = (await r.json()) as ViewerStreamPayload;
         applyPayload(j);
       } catch (e) {
-        console.error("Viewer snapshot error:", e);
+        devWarn("Viewer snapshot error:", e);
       }
     };
 
@@ -94,5 +102,5 @@ export function useViewerLiveFeed(
       esRef.current = null;
       sseModeRef.current = false;
     };
-  }, [id, isActive, mutateAuction, setStreamData]);
+  }, [id, isActive, setStreamData]);
 }

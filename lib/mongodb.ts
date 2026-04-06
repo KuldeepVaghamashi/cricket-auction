@@ -1,10 +1,11 @@
 import { MongoClient, Db } from "mongodb";
 
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
+const rawMongoUri = process.env.MONGODB_URI?.trim();
+if (!rawMongoUri) {
   throw new Error("Please define the MONGODB_URI environment variable in Settings > Vars");
 }
+
+const MONGODB_URI = rawMongoUri;
 
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
@@ -37,16 +38,22 @@ export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db
 
   if (!connectPromise) {
     connectPromise = (async () => {
-      console.log("[v0] Connecting to MongoDB...");
+      if (process.env.NODE_ENV === "development") {
+        console.log("[v0] Connecting to MongoDB...");
+      }
 
-      const client = new MongoClient(MONGODB_URI);
+      const client = new MongoClient(MONGODB_URI, {
+        serverSelectionTimeoutMS: 15_000,
+      });
       await client.connect();
 
       const dbName =
         new URL(MONGODB_URI.replace("mongodb+srv://", "https://")).pathname.slice(1) || "cricket_auction";
       const db = client.db(dbName || "cricket_auction");
 
-      console.log("[v0] Connected to database:", dbName || "cricket_auction");
+      if (process.env.NODE_ENV === "development") {
+        console.log("[v0] Connected to database:", dbName || "cricket_auction");
+      }
 
       await ensureIndexes(db);
 

@@ -2,6 +2,7 @@ import * as http from "node:http";
 import { parse } from "node:url";
 import next from "next";
 import { attachAuctionSocketServer } from "./lib/socket-server";
+import { validateProductionEnvironment } from "./lib/env-validation";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME ?? "localhost";
@@ -11,6 +12,15 @@ const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
 void app.prepare().then(() => {
+  if (!dev) {
+    try {
+      validateProductionEnvironment();
+    } catch (e) {
+      console.error(e);
+      process.exit(1);
+    }
+  }
+
   const server = http.createServer((req, res) => {
     try {
       const parsedUrl = parse(req.url ?? "/", true);
@@ -27,4 +37,11 @@ void app.prepare().then(() => {
   server.listen(port, hostname, () => {
     console.log(`> Ready on http://${hostname}:${port} (auction WebSocket at /api/auctions/ws)`);
   });
+
+  const shutdown = () => {
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(1), 10_000).unref();
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 });
