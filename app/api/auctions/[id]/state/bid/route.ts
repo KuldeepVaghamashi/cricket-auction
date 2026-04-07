@@ -4,10 +4,23 @@ import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import { validateBid } from "@/lib/auction-utils";
 import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
+import { acquireBidLock, releaseBidLock, invalidateCachedState } from "@/lib/auction-cache";
 import type { AuctionState, Team, Auction, AuctionLog } from "@/lib/types";
 
+/**
+ * Process-local per-team throttle — cheap first line of defence against
+ * accidental double-clicks from the same browser tab on this instance.
+ * The distributed Redis lock below handles the cross-instance race condition.
+ */
 const bidThrottleMap = new Map<string, number>();
 const BID_THROTTLE_MS = 250;
+
+setInterval(() => {
+  const cutoff = Date.now() - BID_THROTTLE_MS * 10;
+  for (const [key, ts] of bidThrottleMap) {
+    if (ts < cutoff) bidThrottleMap.delete(key);
+  }
+}, 60_000).unref?.();
 
 // POST place bid
 export async function POST(
@@ -21,7 +34,7 @@ export async function POST(
     }
 
     const { id } = await params;
-    
+
     if (!ObjectId.isValid(id)) {
       return NextResponse.json({ error: "Invalid auction ID" }, { status: 400 });
     }
@@ -30,160 +43,159 @@ export async function POST(
     const { teamId, amount } = body;
 
     if (!teamId || amount === undefined) {
-      return NextResponse.json(
-        { error: "Team ID and amount are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Team ID and amount are required" }, { status: 400 });
     }
 
-    const db = await getDb();
-    const auctionId = new ObjectId(id);
     if (!ObjectId.isValid(teamId)) {
       return NextResponse.json({ error: "Invalid team ID" }, { status: 400 });
     }
-    const teamObjectId = new ObjectId(teamId);
+
     const bidValue = Number(amount);
     if (!Number.isFinite(bidValue)) {
       return NextResponse.json({ error: "Invalid bid amount" }, { status: 400 });
     }
 
-    // Server-side throttle to avoid burst clicking/floods.
+    // ── Process-local per-team throttle ──────────────────────────────────────
     const throttleKey = `${id}:${teamId}`;
     const nowMs = Date.now();
-    const lastMs = bidThrottleMap.get(throttleKey) ?? 0;
-    if (nowMs - lastMs < BID_THROTTLE_MS) {
-      return NextResponse.json({ error: "Please wait a moment before bidding again" }, { status: 429 });
+    if (nowMs - (bidThrottleMap.get(throttleKey) ?? 0) < BID_THROTTLE_MS) {
+      return NextResponse.json(
+        { error: "Please wait a moment before bidding again" },
+        { status: 429 }
+      );
     }
     bidThrottleMap.set(throttleKey, nowMs);
 
-    const auctionsCol = db.collection<Auction>("auctions");
-    const teamsCol = db.collection<Team>("teams");
-    const statesCol = db.collection<AuctionState>("auctionStates");
-    const logsCol = db.collection<AuctionLog>("auctionLogs");
-
-    // Fetch required documents in parallel with minimal projections.
-    const [auction, team, state] = await Promise.all([
-      auctionsCol.findOne(
-        { _id: auctionId },
-        {
-          projection: {
-            _id: 1,
-            status: 1,
-            minIncrement: 1,
-            minBid: 1,
-            maxPlayersPerTeam: 1,
-          },
-        }
-      ),
-      teamsCol.findOne(
-        { _id: teamObjectId, auctionId },
-        {
-          projection: {
-            _id: 1,
-            name: 1,
-            remainingBudget: 1,
-            playersBought: 1,
-          },
-        }
-      ),
-      statesCol.findOne(
-        { auctionId },
-        {
-          projection: {
-            currentPlayerId: 1,
-            currentBid: 1,
-            currentTeamId: 1,
-            currentTeamName: 1,
-            bidHistory: 1,
-          },
-        }
-      ),
-    ]);
-
-    if (!auction) {
-      return NextResponse.json({ error: "Auction not found" }, { status: 404 });
-    }
-    if (auction.status !== "active") {
-      return NextResponse.json({ error: "Auction is not active" }, { status: 400 });
-    }
-    if (!team) {
-      return NextResponse.json({ error: "Team not found" }, { status: 404 });
-    }
-
-    if (!state || !state.currentPlayerId) {
+    // ── Distributed auction-level lock ───────────────────────────────────────
+    // Serialises all bids for the same auction across every server instance.
+    // Prevents two simultaneous bids from both reading the same currentBid,
+    // both passing validation, and the second overwriting the first.
+    const lockToken = await acquireBidLock(id);
+    if (!lockToken) {
       return NextResponse.json(
-        { error: "No player is currently up for auction" },
-        { status: 400 }
+        { error: "Another bid is being processed, please try again" },
+        { status: 429 }
       );
     }
 
-    // Prevent the currently-leading team from bidding again.
-    // This enforces: if a team is leading, it cannot bid while it is itself the leading team.
-    if (state.currentTeamId && state.currentTeamId.toString() === teamObjectId.toString()) {
-      return NextResponse.json(
-        { error: "Leading team cannot place another bid" },
-        { status: 400 }
-      );
-    }
+    try {
+      const db = await getDb();
+      const auctionId = new ObjectId(id);
+      const teamObjectId = new ObjectId(teamId);
 
-    // Validate bid
-    const isFirstBid = state.currentTeamId === null;
-    const validation = validateBid(bidValue, team, auction, state.currentBid, { isFirstBid });
-    if (!validation.valid) {
-      return NextResponse.json({ error: validation.error }, { status: 400 });
-    }
+      const auctionsCol = db.collection<Auction>("auctions");
+      const teamsCol = db.collection<Team>("teams");
+      const statesCol = db.collection<AuctionState>("auctionStates");
+      const logsCol = db.collection<AuctionLog>("auctionLogs");
 
-    // Update state with new bid
-    const bidEntry = {
-      teamId: teamObjectId,
-      teamName: team.name,
-      amount: bidValue,
-      timestamp: new Date(),
-    };
+      // Fetch auction, team, and state in parallel (minimal projections).
+      // Always read fresh from MongoDB inside the lock — cache is for reads
+      // outside the critical section.
+      const [auction, team, state] = await Promise.all([
+        auctionsCol.findOne(
+          { _id: auctionId },
+          { projection: { _id: 1, status: 1, minIncrement: 1, minBid: 1, maxPlayersPerTeam: 1 } }
+        ),
+        teamsCol.findOne(
+          { _id: teamObjectId, auctionId },
+          { projection: { _id: 1, name: 1, remainingBudget: 1, playersBought: 1 } }
+        ),
+        statesCol.findOne(
+          { auctionId },
+          {
+            projection: {
+              currentPlayerId: 1,
+              currentBid: 1,
+              currentTeamId: 1,
+              currentTeamName: 1,
+              bidHistory: 1,
+            },
+          }
+        ),
+      ]);
 
-    const updatedAt = new Date();
-    await statesCol.updateOne(
-      { auctionId },
-      {
-        $set: {
-          currentBid: bidValue,
-          currentTeamId: teamObjectId,
-          currentTeamName: team.name,
-          updatedAt,
-        },
-        $push: { bidHistory: bidEntry },
+      if (!auction) {
+        return NextResponse.json({ error: "Auction not found" }, { status: 404 });
       }
-    );
+      if (auction.status !== "active") {
+        return NextResponse.json({ error: "Auction is not active" }, { status: 400 });
+      }
+      if (!team) {
+        return NextResponse.json({ error: "Team not found" }, { status: 404 });
+      }
+      if (!state || !state.currentPlayerId) {
+        return NextResponse.json(
+          { error: "No player is currently up for auction" },
+          { status: 400 }
+        );
+      }
 
-    // Non-blocking logging to keep bid latency low.
-    void logsCol.insertOne({
-      auctionId,
-      action: "bid_placed",
-      details: {
-        teamId: team._id?.toString(),
+      // Leading team cannot outbid itself.
+      if (state.currentTeamId?.toString() === teamObjectId.toString()) {
+        return NextResponse.json(
+          { error: "Leading team cannot place another bid" },
+          { status: 400 }
+        );
+      }
+
+      // Business-rule validation (budget, increment, slot limits).
+      const isFirstBid = state.currentTeamId === null;
+      const validation = validateBid(bidValue, team, auction, state.currentBid, { isFirstBid });
+      if (!validation.valid) {
+        return NextResponse.json({ error: validation.error }, { status: 400 });
+      }
+
+      // ── Atomic write ────────────────────────────────────────────────────────
+      const bidEntry = {
+        teamId: teamObjectId,
         teamName: team.name,
         amount: bidValue,
-      },
-      timestamp: new Date(),
-    }).catch((error) => {
-      console.error("Bid log insert failed:", error);
-    });
+        timestamp: new Date(),
+      };
+      const updatedAt = new Date();
 
-    // Bid affects only auction state (current bid/team + bid history) and logs.
-    notifyAuctionSubscribers(id, ["st", "lg"]);
+      await statesCol.updateOne(
+        { auctionId },
+        {
+          $set: {
+            currentBid: bidValue,
+            currentTeamId: teamObjectId,
+            currentTeamName: team.name,
+            updatedAt,
+          },
+          $push: { bidHistory: bidEntry },
+        }
+      );
 
-    return NextResponse.json({
-      success: true,
-      currentBid: bidValue,
-      currentTeamId: teamId,
-      currentTeamName: team.name,
-      updatedAt: updatedAt.toISOString(),
-    });
+      // Invalidate cached state so the next GET returns fresh data.
+      void invalidateCachedState(id);
+
+      // Non-blocking audit log.
+      void logsCol
+        .insertOne({
+          auctionId,
+          action: "bid_placed",
+          details: { teamId: team._id?.toString(), teamName: team.name, amount: bidValue },
+          timestamp: new Date(),
+        })
+        .catch((e) => console.error("Bid log insert failed:", e));
+
+      // Broadcast invalidation to all connected clients (Redis Pub/Sub when available).
+      notifyAuctionSubscribers(id, ["st", "lg"]);
+
+      return NextResponse.json({
+        success: true,
+        currentBid: bidValue,
+        currentTeamId: teamId,
+        currentTeamName: team.name,
+        updatedAt: updatedAt.toISOString(),
+      });
+    } finally {
+      // Always release — even if an error was thrown above.
+      void releaseBidLock(id, lockToken);
+    }
   } catch (error) {
     console.error("Bid error:", error);
-    return NextResponse.json(
-      { error: "Failed to place bid" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to place bid" }, { status: 500 });
   }
 }

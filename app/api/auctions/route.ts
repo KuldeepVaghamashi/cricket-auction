@@ -49,23 +49,9 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
 
-    // Parse datetime-local string as UTC (YYYY-MM-DDTHH:mm) so scheduled time is preserved.
-    let parsedDate: Date;
-    if (typeof date === "string" && date.includes("T")) {
-      const [datePart, timePart] = date.split("T");
-      const [year, month, day] = datePart.split("-").map(Number);
-      const [hours, minutes] = timePart.split(":").map(Number);
-      parsedDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
-    } else {
-      parsedDate = new Date(date);
-    }
-    if (Number.isNaN(parsedDate.getTime())) {
-      return NextResponse.json({ error: "Invalid auction start date" }, { status: 400 });
-    }
-
     const auction: Auction = {
       name,
-      date: parsedDate,
+      date: new Date(date),
       budget: Number(budget),
       minIncrement: Number(minIncrement),
       minBid: Number(minBid),

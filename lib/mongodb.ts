@@ -44,6 +44,15 @@ export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db
 
       const client = new MongoClient(MONGODB_URI, {
         serverSelectionTimeoutMS: 15_000,
+        // Raise pool ceiling so 50-500 concurrent requests don't queue behind
+        // the default limit of 5. minPoolSize keeps warm connections ready.
+        maxPoolSize: 50,
+        minPoolSize: 5,
+        // Reclaim idle connections after 2 min to avoid holding Atlas slots
+        // during quiet periods between auction rounds.
+        maxIdleTimeMS: 120_000,
+        // How long a request waits for a free pool slot before failing.
+        waitQueueTimeoutMS: 10_000,
       });
       await client.connect();
 

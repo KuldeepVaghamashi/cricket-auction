@@ -87,6 +87,30 @@ interface AuctionLogResponse {
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
+// Extracted outside the component: pure utility with no React deps — never recreated on render.
+function playTone(frequency: number, durationMs = 90) {
+  if (typeof window === "undefined") return;
+  try {
+    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextCtor) return;
+    const ctx = new AudioContextCtor();
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.value = frequency;
+    gainNode.gain.value = 0.03;
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    oscillator.start();
+    window.setTimeout(() => {
+      oscillator.stop();
+      ctx.close().catch(() => {});
+    }, durationMs);
+  } catch {
+    // Sound is best-effort; never block auction actions.
+  }
+}
+
 const TEAM_BUDGET_COLOR_CLASS = "text-sky-400";
 
 function getTeamColorClass(_teamId: string | null | undefined) {
@@ -165,35 +189,35 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
     return counts;
   }, [state?.bidHistory]);
 
-  const playTone = (frequency: number, durationMs = 90) => {
-    // Web Audio API: generate a short beep (no external audio assets).
-    if (typeof window === "undefined") return;
-    try {
-      const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContextCtor) return;
+  // Memoized player lists — recomputed only when `players` changes, not on every render
+  // (e.g. pendingBid / loading state changes no longer trigger O(n log n) sorts).
+  const playerLists = useMemo(() => {
+    if (!players) return null;
+    const available = players.filter((p) => p.status === "available");
+    const unsoldReplay = players.filter((p) => p.status === "unsold" && p.unsoldReplayed !== true);
+    const sold = players.filter((p) => p.status === "sold");
+    const unsold = players.filter((p) => p.status === "unsold");
+    const collator = new Intl.Collator(undefined, { sensitivity: "base" });
+    const byName = (a: { name: string }, b: { name: string }) => collator.compare(a.name, b.name);
+    return {
+      available,
+      unsoldReplayCandidates: unsoldReplay,
+      pickableCount: available.length + unsoldReplay.length,
+      soldCount: sold.length,
+      unsoldCount: unsold.length,
+      soldList: sold.slice().sort(byName),
+      unsoldList: unsold.slice().sort(byName),
+      availableSorted: available.slice().sort(byName),
+    };
+  }, [players]);
 
-      const ctx = new AudioContextCtor();
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
+  // Memoized lookup map — rebuilt only when teams list changes.
+  const teamNameById = useMemo(
+    () => new Map(teams?.map((t) => [t._id, t.name]) ?? []),
+    [teams]
+  );
 
-      oscillator.type = "sine";
-      oscillator.frequency.value = frequency;
-      gainNode.gain.value = 0.03;
-
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-
-      oscillator.start();
-      window.setTimeout(() => {
-        oscillator.stop();
-        ctx.close().catch(() => {});
-      }, durationMs);
-    } catch {
-      // Sound is best-effort; never block auction actions.
-    }
-  };
-
-  const handlePickRandom = async () => {
+  const handlePickRandom = useCallback(async () => {
     setLoading(true);
     setError(null);
     setPendingBid(null);
@@ -213,7 +237,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, refreshAll]);
 
   const handleCopyViewerLink = async () => {
     try {
@@ -385,29 +409,21 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
     );
   }
 
-  const availablePlayers = players.filter((p) => p.status === "available");
-  const unsoldReplayCandidates = players.filter(
-    (p) => p.status === "unsold" && p.unsoldReplayed !== true
-  );
-  const pickablePlayersCount = availablePlayers.length + unsoldReplayCandidates.length;
+  // All player list computations are memoized above (playerLists / teamNameById).
+  // Destructure here for readable usage in JSX — these assignments are O(1).
+  const {
+    available: availablePlayers,
+    pickableCount: pickablePlayersCount,
+    soldCount,
+    unsoldCount,
+    soldList: soldPlayersList,
+    unsoldList: unsoldPlayersList,
+    availableSorted,
+  } = playerLists!;
   const serverCurrentBid = state.currentBid;
   const increment = auction.minIncrement;
   const minLegalBid = state.currentTeamId ? serverCurrentBid + increment : serverCurrentBid;
   const currentBid = pendingBid ?? serverCurrentBid;
-  const soldCount = players.filter((p) => p.status === "sold").length;
-  const unsoldCount = players.filter((p) => p.status === "unsold").length;
-  const soldPlayersList = players
-    .filter((p) => p.status === "sold")
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-  const unsoldPlayersList = players
-    .filter((p) => p.status === "unsold")
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-  const availableSorted = [...availablePlayers].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
-  );
-  const teamNameById = new Map(teams.map((t) => [t._id, t.name]));
 
   return (
     <div className="min-h-0 px-4 py-6 sm:px-6 lg:py-8">

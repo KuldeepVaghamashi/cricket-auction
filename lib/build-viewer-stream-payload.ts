@@ -16,7 +16,11 @@ export async function buildViewerStreamPayload(
 ): Promise<Partial<ViewerStreamPayload>> {
   const db = await getDb();
 
-  const auction = await db.collection<Auction>("auctions").findOne({ _id: auctionId });
+  // Project only the fields used below — avoids fetching large unused auction documents.
+  const auction = await db.collection<Auction>("auctions").findOne(
+    { _id: auctionId },
+    { projection: { _id: 1, name: 1, status: 1, minIncrement: 1, maxPlayersPerTeam: 1 } }
+  );
   if (!auction) {
     return {
       error: "Auction not found",

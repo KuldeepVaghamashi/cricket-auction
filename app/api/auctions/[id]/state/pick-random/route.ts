@@ -89,8 +89,8 @@ export async function POST(
       { upsert: true }
     );
 
-    // Log action
-    await db.collection<AuctionLog>("auctionLogs").insertOne({
+    // Non-blocking log — does not need to complete before broadcasting the pick.
+    void db.collection<AuctionLog>("auctionLogs").insertOne({
       auctionId,
       action: "player_picked",
       details: {
@@ -99,7 +99,7 @@ export async function POST(
         basePrice: selectedPlayer.basePrice,
       },
       timestamp: new Date(),
-    });
+    }).catch((e) => console.error("pick log insert failed:", e));
 
     // Picking a new player changes auction state (current player + base bid) and logs.
     // Teams/roster/purses do not change until completion.

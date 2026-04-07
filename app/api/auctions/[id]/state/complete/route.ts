@@ -35,10 +35,14 @@ export async function POST(
     const db = await getDb();
     const auctionId = new ObjectId(id);
 
-    // Get auction
-    const auction = await db
-      .collection<Auction>("auctions")
-      .findOne({ _id: auctionId });
+    // Fetch auction + state in parallel — two independent reads, no reason to serialize.
+    const [auction, state] = await Promise.all([
+      db.collection<Auction>("auctions").findOne(
+        { _id: auctionId },
+        { projection: { _id: 1, status: 1, maxPlayersPerTeam: 1 } }
+      ),
+      db.collection<AuctionState>("auctionStates").findOne({ auctionId }),
+    ]);
 
     if (!auction) {
       return NextResponse.json({ error: "Auction not found" }, { status: 404 });
@@ -51,11 +55,6 @@ export async function POST(
       );
     }
 
-    // Get current state
-    const state = await db
-      .collection<AuctionState>("auctionStates")
-      .findOne({ auctionId });
-
     if (!state || !state.currentPlayerId) {
       return NextResponse.json(
         { error: "No player is currently up for auction" },
@@ -65,7 +64,7 @@ export async function POST(
 
     const playerId = state.currentPlayerId;
 
-    // Get current player
+    // Get current player (depends on state.currentPlayerId from above, so sequential is correct).
     const player = await db
       .collection<Player>("players")
       .findOne({ _id: playerId });
@@ -120,8 +119,8 @@ export async function POST(
         }
       );
 
-      // Log action
-      await db.collection<AuctionLog>("auctionLogs").insertOne({
+      // Non-blocking log — same pattern as bid route; keeps response latency low.
+      void db.collection<AuctionLog>("auctionLogs").insertOne({
         auctionId,
         action: "player_sold",
         details: {
@@ -132,7 +131,7 @@ export async function POST(
           price: state.currentBid,
         },
         timestamp: new Date(),
-      });
+      }).catch((e) => console.error("sold log insert failed:", e));
     } else {
       // Mark as unsold
       await db.collection<Player>("players").updateOne(
@@ -143,8 +142,7 @@ export async function POST(
         }
       );
 
-      // Log action
-      await db.collection<AuctionLog>("auctionLogs").insertOne({
+      void db.collection<AuctionLog>("auctionLogs").insertOne({
         auctionId,
         action: "player_unsold",
         details: {
@@ -152,7 +150,7 @@ export async function POST(
           playerName: player.name,
         },
         timestamp: new Date(),
-      });
+      }).catch((e) => console.error("unsold log insert failed:", e));
     }
 
     // Reset auction state

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
+import { getCachedState, setCachedState } from "@/lib/auction-cache";
 import type { AuctionState, Player } from "@/lib/types";
 
 // GET auction state
@@ -16,12 +17,28 @@ export async function GET(
       return NextResponse.json({ error: "Invalid auction ID" }, { status: 400 });
     }
 
+    // ── Redis cache for the lite path ──────────────────────────────────────
+    // The admin live page polls ?lite=1 every 12 s when WebSocket is down.
+    // Serving from cache eliminates the MongoDB round-trip on most polls.
+    // Cache is invalidated by bid/route.ts after every successful write.
+    if (lite) {
+      const cached = await getCachedState(id);
+      if (cached) {
+        return NextResponse.json(cached);
+      }
+    }
+
     const db = await getDb();
     const auctionId = new ObjectId(id);
 
+    // Limit bidHistory to last 20 entries in both lite and full modes.
+    // The full array can grow indefinitely; clients never need the full history.
     let state = await db
       .collection<AuctionState>("auctionStates")
-      .findOne({ auctionId });
+      .findOne(
+        { auctionId },
+        { projection: { bidHistory: { $slice: -20 } } } as any
+      );
 
     // Create state if doesn't exist
     if (!state) {
@@ -57,7 +74,7 @@ export async function GET(
     }
 
     if (lite) {
-      return NextResponse.json({
+      const litePayload = {
         _id: state._id?.toString(),
         auctionId: state.auctionId.toString(),
         currentPlayerId: state.currentPlayerId?.toString() || null,
@@ -80,7 +97,10 @@ export async function GET(
               basePrice: currentPlayer.basePrice,
             }
           : null,
-      });
+      };
+      // Populate cache for next poll — non-blocking.
+      void setCachedState(id, litePayload);
+      return NextResponse.json(litePayload);
     }
 
     return NextResponse.json({

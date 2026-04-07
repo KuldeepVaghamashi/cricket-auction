@@ -3,6 +3,7 @@ import { parse } from "node:url";
 import next from "next";
 import { attachAuctionSocketServer } from "./lib/socket-server";
 import { validateProductionEnvironment } from "./lib/env-validation";
+import { closeRedis, REDIS_AVAILABLE } from "./lib/redis";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME ?? "localhost";
@@ -39,7 +40,12 @@ void app.prepare().then(() => {
   });
 
   const shutdown = () => {
-    server.close(() => process.exit(0));
+    server.close(async () => {
+      if (REDIS_AVAILABLE) {
+        try { await closeRedis(); } catch { /* non-fatal */ }
+      }
+      process.exit(0);
+    });
     setTimeout(() => process.exit(1), 10_000).unref();
   };
   process.on("SIGTERM", shutdown);
