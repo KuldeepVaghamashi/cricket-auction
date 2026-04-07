@@ -101,9 +101,19 @@ export async function POST(
       timestamp: new Date(),
     }).catch((e) => console.error("pick log insert failed:", e));
 
-    // Picking a new player changes auction state (current player + base bid) and logs.
-    // Teams/roster/purses do not change until completion.
-    notifyAuctionSubscribers(id, ["st", "lg"]);
+    // Broadcast with inline delta so viewer clients instantly show the new player
+    // without an extra /viewer-snapshot fetch.
+    notifyAuctionSubscribers(id, ["st", "lg"], {
+      newRound: true,
+      currentPlayer: {
+        _id: selectedPlayer._id!.toString(),
+        name: selectedPlayer.name,
+        basePrice: selectedPlayer.basePrice,
+      },
+      currentBid: selectedPlayer.basePrice,
+      currentTeamId: null,
+      currentTeamName: null,
+    });
 
     return NextResponse.json({
       success: true,

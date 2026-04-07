@@ -1,8 +1,8 @@
 "use client";
 
-import type { AuctionInvScope } from "@/lib/socket-hub";
+import type { AuctionInvScope, AuctionDelta } from "@/lib/socket-hub";
 
-export type { AuctionInvScope };
+export type { AuctionInvScope, AuctionDelta };
 
 export function getAuctionWsUrl(auctionId: string): string {
   if (typeof window === "undefined") return "";
@@ -12,7 +12,12 @@ export function getAuctionWsUrl(auctionId: string): string {
 
 type AuctionLiveSocketOptions = {
   auctionId: string;
-  onInvalidate: (scopes: AuctionInvScope[]) => void;
+  /**
+   * Called on every invalidation message.
+   * `delta` is present for high-frequency events (bid, pick) and contains the
+   * changed values inline — the viewer can apply them without a snapshot fetch.
+   */
+  onInvalidate: (scopes: AuctionInvScope[], delta?: AuctionDelta) => void;
   onConnectionChange?: (connected: boolean) => void;
   /**
    * Invoked once when the socket never reaches `open` (e.g. plain `next dev` without custom server).
@@ -65,9 +70,15 @@ export function createAuctionLiveSocket(options: AuctionLiveSocketOptions): { cl
 
     socket.onmessage = (ev) => {
       try {
-        const data = JSON.parse(String(ev.data)) as { v?: number; t?: string; s?: AuctionInvScope[] };
+        const data = JSON.parse(String(ev.data)) as {
+          v?: number;
+          t?: string;
+          s?: AuctionInvScope[];
+          d?: AuctionDelta;
+        };
         if (data?.v === 1 && data.t === "inv" && Array.isArray(data.s)) {
-          options.onInvalidate(data.s);
+          // Pass optional inline delta — viewer applies it without a snapshot fetch.
+          options.onInvalidate(data.s, data.d);
         }
       } catch {
         /* ignore malformed */

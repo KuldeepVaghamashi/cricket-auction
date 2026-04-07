@@ -33,8 +33,10 @@ export async function GET(
       // - Less frequently: refresh heavy data (teams/maxBid + player counts + auction meta).
       const db = await getDb();
       const now = () => Date.now();
-      /** SSE fallback tick: checks DB on this interval; pushes only when state changes. */
-      const TICK_MS = 1500;
+      /** SSE fallback tick: checks DB on this interval; pushes only when state changes.
+       *  600 ms gives ~300 ms average lag (was 750 ms at 1500 ms).
+       *  The inFlight guard and stateKey comparison ensure no wasted pushes. */
+      const TICK_MS = 600;
       const REFRESH_AUCTION_MS = 10000;
       const REFRESH_TEAMS_MS = 4000;
       const REFRESH_STATS_MS = 4000;

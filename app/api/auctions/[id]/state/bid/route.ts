@@ -180,8 +180,18 @@ export async function POST(
         })
         .catch((e) => console.error("Bid log insert failed:", e));
 
-      // Broadcast invalidation to all connected clients (Redis Pub/Sub when available).
-      notifyAuctionSubscribers(id, ["st", "lg"]);
+      // Broadcast with inline bid delta so viewer clients update instantly
+      // without making a second HTTP round-trip to /viewer-snapshot.
+      notifyAuctionSubscribers(id, ["st", "lg"], {
+        currentBid: bidValue,
+        currentTeamId: teamId,
+        currentTeamName: team.name,
+        bidEntry: {
+          teamName: team.name,
+          amount: bidValue,
+          timestamp: updatedAt.toISOString(),
+        },
+      });
 
       return NextResponse.json({
         success: true,

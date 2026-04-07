@@ -34,7 +34,10 @@ export function useAuctionSocket(
 
     const socket = createAuctionLiveSocket({
       auctionId,
-      onInvalidate(scopes) {
+      // Delta is accepted but intentionally ignored here — the admin live page
+      // uses SWR mutate for all state updates (with its own optimistic layer),
+      // so inline deltas would conflict with that flow.
+      onInvalidate(scopes, _delta) {
         const need = scopesToMutations(scopes);
         const m = mutatorsRef.current;
         if (need.has("st")) m.mutateState?.();
