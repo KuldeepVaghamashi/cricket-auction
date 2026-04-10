@@ -4,6 +4,7 @@ import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { AuctionState, Player, AuctionLog } from "@/lib/types";
 import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
+import { writeThroughPatch } from "@/lib/auction-cache";
 
 // POST undo latest bid (only the most recent bidHistory entry)
 export async function POST(
@@ -79,6 +80,20 @@ export async function POST(
       },
       timestamp: new Date(),
     }).catch(() => {});
+
+    // Write-through: reflect the rolled-back bid in the cache immediately.
+    void writeThroughPatch(id, {
+      currentBid: last ? last.amount : player.basePrice,
+      currentTeamId: last ? last.teamId?.toString() ?? null : null,
+      currentTeamName: last ? last.teamName : null,
+      bidHistory: nextHistory.slice(-10).map((b) => ({
+        teamId: b.teamId.toString(),
+        teamName: b.teamName,
+        amount: b.amount,
+        timestamp: b.timestamp instanceof Date ? b.timestamp.toISOString() : String(b.timestamp),
+      })),
+      updatedAt: updatedAt.toISOString(),
+    });
 
     // Undo affects auction state (bid + history) and logs only.
     notifyAuctionSubscribers(id, ["st", "lg"]);

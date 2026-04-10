@@ -4,6 +4,7 @@ import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { AuctionState, Player, Auction, AuctionLog } from "@/lib/types";
 import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
+import { writeThroughPick } from "@/lib/auction-cache";
 
 // POST pick random player
 export async function POST(
@@ -74,6 +75,7 @@ export async function POST(
       selectedPlayer = replayCandidates[randomIndex];
     }
 
+    const pickedAt = new Date();
     await db.collection<AuctionState>("auctionStates").updateOne(
       { auctionId },
       {
@@ -83,10 +85,22 @@ export async function POST(
           currentTeamId: null,
           currentTeamName: null,
           bidHistory: [],
-          updatedAt: new Date(),
+          updatedAt: pickedAt,
         },
       },
       { upsert: true }
+    );
+
+    // Write-through: new clients see the picked player from Redis instantly.
+    void writeThroughPick(
+      id,
+      {
+        _id: selectedPlayer._id!.toString(),
+        auctionId: selectedPlayer.auctionId.toString(),
+        name: selectedPlayer.name,
+        basePrice: selectedPlayer.basePrice,
+      },
+      pickedAt.toISOString()
     );
 
     // Non-blocking log — does not need to complete before broadcasting the pick.

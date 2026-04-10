@@ -4,6 +4,7 @@ import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { AuctionState, Player, Team, Auction, AuctionLog } from "@/lib/types";
 import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
+import { writeThroughPatch } from "@/lib/auction-cache";
 
 // POST mark player as sold or unsold
 export async function POST(
@@ -173,6 +174,23 @@ export async function POST(
         },
       }
     );
+
+    // Write-through: new clients connecting right after sold/unsold see the
+    // cleared state (no current player, no bids) from Redis instantly.
+    void writeThroughPatch(id, {
+      currentPlayerId: null,
+      currentBid: 0,
+      currentTeamId: null,
+      currentTeamName: null,
+      bidHistory: [],
+      updatedAt: completionAt.toISOString(),
+      lastAction: action,
+      lastActionAt: completionAt.toISOString(),
+      lastActionPlayerName: player.name,
+      lastActionTeamName: action === "sold" ? state.currentTeamName : null,
+      lastActionPrice: action === "sold" ? state.currentBid : null,
+      currentPlayer: null,
+    });
 
     // Completion updates:
     // - sold: auction state + team purses + player statuses + logs

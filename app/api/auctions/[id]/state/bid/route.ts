@@ -3,8 +3,9 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import { validateBid } from "@/lib/auction-utils";
-import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
-import { acquireBidLock, releaseBidLock, invalidateCachedState } from "@/lib/auction-cache";
+import { pushAuctionInvalidation } from "@/lib/socket-hub";
+import { emitBidUpdate } from "@/lib/socket-io-server";
+import { acquireBidLock, releaseBidLock, writeThroughBid } from "@/lib/auction-cache";
 import type { AuctionState, Team, Auction, AuctionLog } from "@/lib/types";
 
 /**
@@ -167,8 +168,22 @@ export async function POST(
         }
       );
 
-      // Invalidate cached state so the next GET returns fresh data.
-      void invalidateCachedState(id);
+      // Write-through: patch the cached state with the new bid so the next
+      // client to connect gets current data from Redis, not MongoDB.
+      // Awaited inside the bid lock — the read-modify-write is fully
+      // serialised, so no concurrent bid can race this cache update.
+      await writeThroughBid(id, {
+        currentBid: bidValue,
+        currentTeamId: teamId,
+        currentTeamName: team.name,
+        bidEntry: {
+          teamId,
+          teamName: team.name,
+          amount: bidValue,
+          timestamp: updatedAt.toISOString(),
+        },
+        updatedAt: updatedAt.toISOString(),
+      });
 
       // Non-blocking audit log.
       void logsCol
@@ -180,9 +195,10 @@ export async function POST(
         })
         .catch((e) => console.error("Bid log insert failed:", e));
 
-      // Broadcast with inline bid delta so viewer clients update instantly
-      // without making a second HTTP round-trip to /viewer-snapshot.
-      notifyAuctionSubscribers(id, ["st", "lg"], {
+      // Native WS → viewer clients only (inline delta avoids a second HTTP round-trip).
+      // Admin clients are notified via emitBidUpdate below — using both channels
+      // would cause a double SWR mutation per bid (event flooding).
+      pushAuctionInvalidation(id, ["st", "lg"], {
         currentBid: bidValue,
         currentTeamId: teamId,
         currentTeamName: team.name,
@@ -191,6 +207,15 @@ export async function POST(
           amount: bidValue,
           timestamp: updatedAt.toISOString(),
         },
+      });
+
+      // Socket.IO → admin clients: targeted "bid:update" so only
+      // currentBid / currentPlayer / timer re-render, not the full page.
+      emitBidUpdate(id, {
+        currentBid: bidValue,
+        currentTeamId: teamId,
+        currentTeamName: team.name,
+        updatedAt: updatedAt.toISOString(),
       });
 
       return NextResponse.json({

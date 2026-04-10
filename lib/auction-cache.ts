@@ -120,3 +120,115 @@ export async function invalidateCachedState(auctionId: string): Promise<void> {
     // Non-fatal.
   }
 }
+
+// ---------------------------------------------------------------------------
+// Write-through helpers
+//
+// Keeping cache and DB in sync on every mutation means new clients always
+// get current state from Redis — no MongoDB cold-read on connect.
+//
+// All helpers are best-effort: a Redis failure leaves the cache stale but
+// never corrupts the source of truth (MongoDB).
+// ---------------------------------------------------------------------------
+
+/**
+ * Atomic delta-update for bid events.
+ *
+ * Patches only the bid-related fields so the current player is preserved.
+ * MUST be called inside the bid lock so no concurrent bid can race this
+ * read-modify-write.
+ * If there is no cached entry yet (cold start), this is a no-op and the
+ * next GET will warm the cache from MongoDB.
+ */
+export async function writeThroughBid(
+  auctionId: string,
+  patch: {
+    currentBid: number;
+    currentTeamId: string;
+    currentTeamName: string;
+    bidEntry: { teamId: string; teamName: string; amount: number; timestamp: string };
+    updatedAt: string;
+  }
+): Promise<void> {
+  if (!REDIS_AVAILABLE) return;
+  try {
+    const raw = await getRedis().get(stateKey(auctionId));
+    if (!raw) return; // no baseline — next GET will warm the cache
+    const cached = JSON.parse(raw) as Record<string, unknown>;
+    const prev = Array.isArray(cached.bidHistory) ? (cached.bidHistory as unknown[]) : [];
+    const updated: Record<string, unknown> = {
+      ...cached,
+      currentBid: patch.currentBid,
+      currentTeamId: patch.currentTeamId,
+      currentTeamName: patch.currentTeamName,
+      // Keep latest 10 entries — same cap as the lite GET endpoint.
+      bidHistory: [...prev.slice(-9), patch.bidEntry],
+      updatedAt: patch.updatedAt,
+    };
+    await getRedis().setex(stateKey(auctionId), STATE_CACHE_TTL_S, JSON.stringify(updated));
+  } catch {
+    // Non-fatal: stale cache replaced on next GET.
+  }
+}
+
+/**
+ * Full write-through for pick-random events.
+ *
+ * Caches the complete new-player state so the first viewer to connect
+ * after a pick sees the new player from Redis, not MongoDB.
+ * Preserves the state document _id from the existing cache entry if
+ * present so the admin lite response stays complete.
+ */
+export async function writeThroughPick(
+  auctionId: string,
+  player: { _id: string; auctionId: string; name: string; basePrice: number },
+  updatedAt: string
+): Promise<void> {
+  if (!REDIS_AVAILABLE) return;
+  try {
+    const raw = await getRedis().get(stateKey(auctionId));
+    const base = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    const payload: Record<string, unknown> = {
+      ...base, // preserves _id, auctionId string, and any extra fields
+      auctionId,
+      currentPlayerId: player._id,
+      currentBid: player.basePrice,
+      currentTeamId: null,
+      currentTeamName: null,
+      bidHistory: [],
+      updatedAt,
+      currentPlayer: {
+        _id: player._id,
+        auctionId: player.auctionId,
+        name: player.name,
+        basePrice: player.basePrice,
+      },
+    };
+    await getRedis().setex(stateKey(auctionId), STATE_CACHE_TTL_S, JSON.stringify(payload));
+  } catch {
+    // Non-fatal.
+  }
+}
+
+/**
+ * Partial write-through for complete / undo-bid / reset events.
+ *
+ * Merges the given patch fields onto the cached state so new clients
+ * immediately see the post-action state without hitting MongoDB.
+ * If there is no existing cache entry the patch fields are written on
+ * their own — the next full GET will fill in the rest from MongoDB.
+ */
+export async function writeThroughPatch(
+  auctionId: string,
+  patch: Record<string, unknown>
+): Promise<void> {
+  if (!REDIS_AVAILABLE) return;
+  try {
+    const raw = await getRedis().get(stateKey(auctionId));
+    const base = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    const updated = { ...base, ...patch };
+    await getRedis().setex(stateKey(auctionId), STATE_CACHE_TTL_S, JSON.stringify(updated));
+  } catch {
+    // Non-fatal.
+  }
+}

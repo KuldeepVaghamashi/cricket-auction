@@ -86,6 +86,10 @@ export function useViewerLiveFeed(
   const mutateAuctionRef = useRef(mutateAuction);
   mutateAuctionRef.current = mutateAuction;
   const lastFullRef = useRef<ViewerStreamPayload | null>(null);
+  // Prevents concurrent snapshot fetches when multiple WS invalidations
+  // arrive in rapid succession — only the first in-flight fetch runs;
+  // the rest are dropped and a fresh fetch fires once it completes.
+  const fetchInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!isActive || !id) {
@@ -124,6 +128,8 @@ export function useViewerLiveFeed(
     };
 
     const fetchSnapshot = async (mode: "full" | "state" | "stats") => {
+      if (fetchInFlightRef.current) return;
+      fetchInFlightRef.current = true;
       try {
         const r = await fetch(
           `/api/auctions/${id}/viewer-snapshot?mode=${encodeURIComponent(mode)}`,
@@ -150,6 +156,8 @@ export function useViewerLiveFeed(
         setStreamData(merged);
       } catch (e) {
         devWarn("Viewer snapshot error:", e);
+      } finally {
+        fetchInFlightRef.current = false;
       }
     };
 

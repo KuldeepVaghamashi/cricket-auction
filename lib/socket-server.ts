@@ -100,7 +100,7 @@ export function attachAuctionSocketServer(server: Server): void {
       const host = req.headers.host ?? "127.0.0.1";
       const url = new URL(req.url ?? "/", `http://${host}`);
       if (url.pathname !== WS_PATH) {
-        socket.destroy();
+        // Not our path — let other upgrade handlers (e.g. Socket.IO) process it.
         return;
       }
       wss.handleUpgrade(req, socket, head, (ws) => {

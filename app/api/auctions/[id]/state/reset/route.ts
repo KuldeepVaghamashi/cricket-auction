@@ -4,6 +4,7 @@ import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { AuctionState, Player, AuctionLog } from "@/lib/types";
 import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
+import { writeThroughPatch } from "@/lib/auction-cache";
 
 // POST reset current bid
 export async function POST(
@@ -47,6 +48,7 @@ export async function POST(
     }
 
     // Reset to base price
+    const resetAt = new Date();
     await db.collection<AuctionState>("auctionStates").updateOne(
       { auctionId },
       {
@@ -55,10 +57,19 @@ export async function POST(
           currentTeamId: null,
           currentTeamName: null,
           bidHistory: [],
-          updatedAt: new Date(),
+          updatedAt: resetAt,
         },
       }
     );
+
+    // Write-through: new clients see the reset (base price, no team) instantly.
+    void writeThroughPatch(id, {
+      currentBid: player.basePrice,
+      currentTeamId: null,
+      currentTeamName: null,
+      bidHistory: [],
+      updatedAt: resetAt.toISOString(),
+    });
 
     // Log action
     await db.collection<AuctionLog>("auctionLogs").insertOne({

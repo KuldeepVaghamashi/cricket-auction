@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, use, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useRef, use, memo, useCallback, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BrandMark } from "@/components/brand-mark";
@@ -58,7 +58,7 @@ const VIEWER_SURFACE = cn(
 
 const VIEWER_SHELL = cn("app-public-shell", "viewer-page-root");
 
-function ViewerPublicHeader({
+const ViewerPublicHeader = memo(function ViewerPublicHeader({
   eyebrow,
   title,
   right,
@@ -94,6 +94,16 @@ function ViewerPublicHeader({
       </div>
     </header>
   );
+});
+
+function formatCountdown(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+  return `${hours}h ${minutes}m ${seconds}s`;
 }
 
 const jsonFetcher = async <T,>(url: string): Promise<T> => {
@@ -212,14 +222,75 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
   }, [allPlayers]);
 
-  const togglePoolFilter = (key: "available" | "unsold") => {
-    setPoolFilter((prev) => (prev === key ? null : key));
-  };
+  // Derived values — memoized so the 1 s `nowMs` tick and per-bid stream
+  // updates don't recompute them on every render.
 
-  const scrollToSold = () => {
+  const soldPlayers = useMemo(
+    () => (allPlayers ?? []).filter((p) => p.status === "sold"),
+    [allPlayers]
+  );
+
+  // Active view uses streamData.teams; completed/draft view uses allTeams.
+  const teamNameById = useMemo(
+    () =>
+      isActive
+        ? new Map<string, string>(
+            (streamData?.teams ?? [])
+              .filter((t) => t._id)
+              .map((t) => [t._id as string, t.name])
+          )
+        : new Map<string, string>(
+            (allTeams ?? []).map((t) => [t._id as string, t.name])
+          ),
+    [isActive, streamData?.teams, allTeams]
+  );
+
+  const recentBidCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    (streamData?.state?.bidHistory ?? []).forEach((b) => {
+      counts[b.teamName] = (counts[b.teamName] ?? 0) + 1;
+    });
+    return counts;
+  }, [streamData?.state?.bidHistory]);
+
+  const selectedTeamName = useMemo(
+    () => (selectedTeamId ? teamNameById.get(selectedTeamId) ?? "Selected Team" : null),
+    [selectedTeamId, teamNameById]
+  );
+
+  const selectedTeamSoldPlayers = useMemo(
+    () => (selectedTeamId ? soldPlayers.filter((p) => p.soldTo === selectedTeamId) : []),
+    [selectedTeamId, soldPlayers]
+  );
+
+  // Stable header badge — minIncrement never changes mid-auction.
+  const headerRight = useMemo(
+    () => (
+      <>
+        <Badge
+          variant="outline"
+          className="hidden border-white/12 bg-black/30 font-mono text-[10px] font-semibold tabular-nums text-muted-foreground sm:inline-flex"
+        >
+          +{streamData?.auction?.minIncrement} pts / raise
+        </Badge>
+        <Badge className="shrink-0 animate-pulse border border-primary/45 bg-primary/18 font-head-arena text-[10px] font-bold uppercase tracking-wider text-arena-cyan shadow-lg shadow-primary/20">
+          <Radio className="mr-1 h-3 w-3" aria-hidden />
+          Live
+        </Badge>
+      </>
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [streamData?.auction?.minIncrement]
+  );
+
+  const togglePoolFilter = useCallback((key: "available" | "unsold") => {
+    setPoolFilter((prev) => (prev === key ? null : key));
+  }, []);
+
+  const scrollToSold = useCallback(() => {
     setPoolFilter(null);
     soldSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  }, []);
 
   const loadingInitial =
     (auctionLoading && !auctionErr) || (auctionReady && isActive && streamData === null);
@@ -307,32 +378,12 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
   }
 
   if (auctionMeta.status !== "active") {
-    const teamNameById = new Map<string, string>(
-      (allTeams ?? []).map((t) => [t._id, t.name])
-    );
-    const soldPlayers = (allPlayers ?? []).filter((p) => p.status === "sold");
     const isDraft = auctionMeta.status === "draft";
 
     const startsAtMs = auctionDateToUtcMs(auctionMeta.date);
     const hasStartsAt = Number.isFinite(startsAtMs);
     const msRemaining = hasStartsAt ? startsAtMs - nowMs : 0;
     const hasCountdown = isDraft && hasStartsAt && msRemaining > 0;
-
-    const formatCountdown = (ms: number) => {
-      const totalSeconds = Math.floor(ms / 1000);
-      const days = Math.floor(totalSeconds / 86400);
-      const hours = Math.floor((totalSeconds % 86400) / 3600);
-      const minutes = Math.floor((totalSeconds % 3600) / 60);
-      const seconds = totalSeconds % 60;
-      if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;
-      return `${hours}h ${minutes}m ${seconds}s`;
-    };
-
-    const preStats = {
-      available: (allPlayers ?? []).filter((p) => p.status === "available").length,
-      sold: (allPlayers ?? []).filter((p) => p.status === "sold").length,
-      unsold: (allPlayers ?? []).filter((p) => p.status === "unsold").length,
-    };
 
     return (
       <div className={cn(VIEWER_SHELL, "flex min-h-screen flex-col")}>
@@ -429,7 +480,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                   <div className="mt-4 grid w-full max-w-xl grid-cols-3 gap-2 sm:mt-6 sm:gap-3">
                     <div className="rounded-xl border border-available/25 bg-available/[0.08] py-3 text-center shadow-inner ring-1 ring-available/10">
                       <p className="font-head-arena text-2xl font-extrabold tabular-nums text-available sm:text-3xl">
-                        {preStats.available}
+                        {playerStats.available}
                       </p>
                       <p className="mt-1 font-head-arena text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
                         Available
@@ -437,7 +488,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     </div>
                     <div className="rounded-xl border border-sold/25 bg-sold/[0.08] py-3 text-center shadow-inner ring-1 ring-sold/10">
                       <p className="font-head-arena text-2xl font-extrabold tabular-nums text-sold sm:text-3xl">
-                        {preStats.sold}
+                        {playerStats.sold}
                       </p>
                       <p className="mt-1 font-head-arena text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
                         Sold
@@ -445,7 +496,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     </div>
                     <div className="rounded-xl border border-unsold/25 bg-unsold/[0.08] py-3 text-center shadow-inner ring-1 ring-unsold/10">
                       <p className="font-head-arena text-2xl font-extrabold tabular-nums text-unsold sm:text-3xl">
-                        {preStats.unsold}
+                        {playerStats.unsold}
                       </p>
                       <p className="mt-1 font-head-arena text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
                         Unsold
@@ -551,40 +602,12 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
   const currentPlayer = streamData.currentPlayer;
   const teamsLive = streamData.teams;
 
-  const recentBidCounts: Record<string, number> = {};
-  (stateLite?.bidHistory ?? []).forEach((b) => {
-    recentBidCounts[b.teamName] = (recentBidCounts[b.teamName] ?? 0) + 1;
-  });
-
-  const teamNameById = new Map<string, string>(
-    teamsLive.filter((t) => t._id).map((t) => [t._id as string, t.name])
-  );
-  const soldPlayers = (allPlayers ?? []).filter((p) => p.status === "sold");
-  const selectedTeamName =
-    selectedTeamId ? teamNameById.get(selectedTeamId) ?? "Selected Team" : null;
-  const selectedTeamSoldPlayers = selectedTeamId
-    ? soldPlayers.filter((p) => p.soldTo === selectedTeamId)
-    : [];
-
   return (
     <div className={cn(VIEWER_SHELL, "flex min-h-screen flex-col")}>
       <ViewerPublicHeader
         eyebrow="Live broadcast"
         title={auctionMeta.name}
-        right={
-          <>
-            <Badge
-              variant="outline"
-              className="hidden border-white/12 bg-black/30 font-mono text-[10px] font-semibold tabular-nums text-muted-foreground sm:inline-flex"
-            >
-              +{streamData.auction.minIncrement} pts / raise
-            </Badge>
-            <Badge className="shrink-0 animate-pulse border border-primary/45 bg-primary/18 font-head-arena text-[10px] font-bold uppercase tracking-wider text-arena-cyan shadow-lg shadow-primary/20">
-              <Radio className="mr-1 h-3 w-3" aria-hidden />
-              Live
-            </Badge>
-          </>
-        }
+        right={headerRight}
       />
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-8">

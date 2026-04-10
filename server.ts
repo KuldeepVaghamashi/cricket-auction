@@ -2,6 +2,7 @@ import * as http from "node:http";
 import { parse } from "node:url";
 import next from "next";
 import { attachAuctionSocketServer } from "./lib/socket-server";
+import { attachAuctionSocketIO } from "./lib/socket-io-server";
 import { validateProductionEnvironment } from "./lib/env-validation";
 import { closeRedis, REDIS_AVAILABLE } from "./lib/redis";
 
@@ -34,9 +35,10 @@ void app.prepare().then(() => {
   });
 
   attachAuctionSocketServer(server);
+  attachAuctionSocketIO(server);
 
   server.listen(port, hostname, () => {
-    console.log(`> Ready on http://${hostname}:${port} (auction WebSocket at /api/auctions/ws)`);
+    console.log(`> Ready on http://${hostname}:${port} (native WS: /api/auctions/ws | Socket.IO: /api/auctions/io)`);
   });
 
   const shutdown = () => {
