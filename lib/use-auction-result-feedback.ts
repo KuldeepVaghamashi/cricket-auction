@@ -22,9 +22,9 @@ export function useAuctionResultFeedback(
 
   // Preload both audio files once on mount so they are ready to play instantly.
   useEffect(() => {
-    soldAudioRef.current = new Audio("/sounds/sold.wav");
+    soldAudioRef.current = new Audio("/sounds/sold.mp3");
     soldAudioRef.current.preload = "auto";
-    unsoldAudioRef.current = new Audio("/sounds/unsold.wav");
+    unsoldAudioRef.current = new Audio("/sounds/unsold.mp3");
     unsoldAudioRef.current.preload = "auto";
 
     return () => {
