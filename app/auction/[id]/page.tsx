@@ -50,6 +50,7 @@ import {
 } from "@/components/arena/arena-classes";
 import type { ViewerStreamPayload } from "@/lib/viewer-stream-types";
 import { useViewerLiveFeed } from "@/lib/use-viewer-live-feed";
+import { useAuctionResultFeedback } from "@/lib/use-auction-result-feedback";
 
 const VIEWER_SURFACE = cn(
   ARENA_GLASS_CARD,
@@ -159,6 +160,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
   );
 
   useViewerLiveFeed(id, isActive, mutateAuction, setStreamData);
+  useAuctionResultFeedback(streamData, isActive);
 
   const prevPlayerIdRef = useRef<string | null>(null);
   useEffect(() => {
