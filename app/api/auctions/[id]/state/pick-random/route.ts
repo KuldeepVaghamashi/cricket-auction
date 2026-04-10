@@ -85,6 +85,7 @@ export async function POST(
           currentTeamId: null,
           currentTeamName: null,
           bidHistory: [],
+          bidCounts: {},
           updatedAt: pickedAt,
         },
       },

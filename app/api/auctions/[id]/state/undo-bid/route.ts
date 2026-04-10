@@ -55,6 +55,14 @@ export async function POST(
     const nextHistory = bidHistory.slice(0, -1);
     const last = nextHistory.length > 0 ? nextHistory[nextHistory.length - 1] : null;
 
+    // Recompute per-team bid counts from the full remaining history.
+    // Uses the unsliced nextHistory so the count is always exact.
+    const nextBidCounts: Record<string, number> = {};
+    for (const b of nextHistory) {
+      const key = b.teamId.toString();
+      nextBidCounts[key] = (nextBidCounts[key] ?? 0) + 1;
+    }
+
     const updatedAt = new Date();
     await db.collection<AuctionState>("auctionStates").updateOne(
       { auctionId },
@@ -64,6 +72,7 @@ export async function POST(
           currentTeamId: last ? last.teamId : null,
           currentTeamName: last ? last.teamName : null,
           bidHistory: nextHistory,
+          bidCounts: nextBidCounts,
           updatedAt,
         },
       }
@@ -92,6 +101,7 @@ export async function POST(
         amount: b.amount,
         timestamp: b.timestamp instanceof Date ? b.timestamp.toISOString() : String(b.timestamp),
       })),
+      bidCounts: nextBidCounts,
       updatedAt: updatedAt.toISOString(),
     });
 

@@ -56,6 +56,10 @@ export interface AuctionState {
   currentTeamId: ObjectId | null;
   currentTeamName: string | null;
   bidHistory: BidHistoryEntry[];
+  /** Per-team bid count for the current player round. Keyed by teamId string.
+   *  Reset to {} on each pick-random/reset. Incremented atomically on each bid.
+   *  More accurate than computing from bidHistory (which is sliced for payload). */
+  bidCounts?: Record<string, number>;
   updatedAt: Date;
   // Used by viewer to trigger "sold/unsold" animations without reading logs.
   lastAction?: "sold" | "unsold" | null;

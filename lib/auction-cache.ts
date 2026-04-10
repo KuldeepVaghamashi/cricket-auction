@@ -156,6 +156,9 @@ export async function writeThroughBid(
     if (!raw) return; // no baseline — next GET will warm the cache
     const cached = JSON.parse(raw) as Record<string, unknown>;
     const prev = Array.isArray(cached.bidHistory) ? (cached.bidHistory as unknown[]) : [];
+    // Increment the team's bid count in the cached entry so the admin sees
+    // an accurate count without waiting for a full MongoDB round-trip.
+    const prevCounts = (cached.bidCounts as Record<string, number> | undefined) ?? {};
     const updated: Record<string, unknown> = {
       ...cached,
       currentBid: patch.currentBid,
@@ -163,6 +166,10 @@ export async function writeThroughBid(
       currentTeamName: patch.currentTeamName,
       // Keep latest 10 entries — same cap as the lite GET endpoint.
       bidHistory: [...prev.slice(-9), patch.bidEntry],
+      bidCounts: {
+        ...prevCounts,
+        [patch.currentTeamId]: (prevCounts[patch.currentTeamId] ?? 0) + 1,
+      },
       updatedAt: patch.updatedAt,
     };
     await getRedis().setex(stateKey(auctionId), STATE_CACHE_TTL_S, JSON.stringify(updated));
@@ -196,6 +203,7 @@ export async function writeThroughPick(
       currentTeamId: null,
       currentTeamName: null,
       bidHistory: [],
+      bidCounts: {},
       updatedAt,
       currentPlayer: {
         _id: player._id,

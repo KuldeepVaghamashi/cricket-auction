@@ -165,6 +165,9 @@ export async function POST(
             updatedAt,
           },
           $push: { bidHistory: bidEntry },
+          // Atomically increment the per-team bid count for the current round.
+          // More accurate than computing count from the sliced bidHistory payload.
+          $inc: { [`bidCounts.${teamId}`]: 1 } as any,
         }
       );
 

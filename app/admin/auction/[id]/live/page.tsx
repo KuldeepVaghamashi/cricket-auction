@@ -74,6 +74,8 @@ interface AuctionStateResponse {
     amount: number;
     timestamp: string;
   }>;
+  /** Accurate per-team bid count for the current round from the server. */
+  bidCounts?: Record<string, number>;
   currentPlayer: PlayerWithId | null;
 }
 
@@ -181,13 +183,17 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   }, [mutateTeams, mutatePlayers, mutateState, mutateLogs]);
 
   const bidCountByTeamId = useMemo(() => {
+    // Prefer server-provided bidCounts — accurate even when bidHistory is
+    // truncated to the last 10 entries for payload efficiency.
+    if (state?.bidCounts) return state.bidCounts;
+    // Fallback: compute from the visible slice (may undercount past 10 bids).
     const counts: Record<string, number> = {};
     if (!state?.bidHistory) return counts;
     for (const b of state.bidHistory) {
       counts[b.teamId] = (counts[b.teamId] ?? 0) + 1;
     }
     return counts;
-  }, [state?.bidHistory]);
+  }, [state?.bidCounts, state?.bidHistory]);
 
   // Memoized player lists — recomputed only when `players` changes, not on every render
   // (e.g. pendingBid / loading state changes no longer trigger O(n log n) sorts).
@@ -257,6 +263,10 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   const handlePlaceBid = async (teamId: string, amount: number) => {
     const now = Date.now();
     if (now - lastBidClickRef.current < 180) return;
+    // Prevent concurrent bids: if any bid is already in-flight, ignore the click.
+    // Two simultaneous bid requests cause state confusion and one will be rejected
+    // by the distributed lock anyway — blocking here keeps the UI consistent.
+    if (bidLoadingTeamId !== null) return;
     lastBidClickRef.current = now;
 
     // Make team selection feel instant and avoid blocking the whole UI.
@@ -275,17 +285,27 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
           amount: Number(amount),
           timestamp: optimisticAt,
         };
+        // Keep same -10 slice as the server so the optimistic array length
+        // matches what revalidation will return — prevents a history-length jump.
+        const nextHistory = [...prev.bidHistory, nextBid].slice(-10);
+        // Increment the optimistic bid count for this team.
+        const prevCounts = prev.bidCounts ?? {};
+        const nextCounts = {
+          ...prevCounts,
+          [teamId]: (prevCounts[teamId] ?? 0) + 1,
+        };
         return {
           ...prev,
           currentBid: Number(amount),
           currentTeamId: teamId,
           currentTeamName: teamName,
-          bidHistory: [...prev.bidHistory, nextBid].slice(-20),
+          bidHistory: nextHistory,
+          bidCounts: nextCounts,
         };
       },
       false
     );
-    
+
     try {
       const res = await fetch(`/api/auctions/${id}/state/bid`, {
         method: "POST",
@@ -293,14 +313,16 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
         body: JSON.stringify({ teamId, amount }),
       });
       const data = await res.json();
-      
+
       if (!res.ok) {
+        // Revert optimistic update on failure.
         mutateState();
         setError(data.error);
       } else {
         setPendingBid(null);
         playTone(660, 80);
-        // Revalidate only state immediately; other datasets can remain on interval.
+        // Always revalidate so the confirmed server state (with accurate
+        // bidCounts from $inc) overwrites the optimistic estimate.
         mutateState();
       }
     } finally {
@@ -368,12 +390,18 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
         if (!prev) return prev;
         const nextHistory = prev.bidHistory.slice(0, -1);
         const last = nextHistory.length > 0 ? nextHistory[nextHistory.length - 1] : null;
+        // Recompute bid counts from the remaining visible history.
+        const nextCounts: Record<string, number> = {};
+        for (const b of nextHistory) {
+          nextCounts[b.teamId] = (nextCounts[b.teamId] ?? 0) + 1;
+        }
         return {
           ...prev,
           currentBid: last ? last.amount : prev.currentPlayer?.basePrice ?? prev.currentBid,
           currentTeamId: last ? last.teamId : null,
           currentTeamName: last ? last.teamName : null,
           bidHistory: nextHistory,
+          bidCounts: nextCounts,
         };
       },
       false

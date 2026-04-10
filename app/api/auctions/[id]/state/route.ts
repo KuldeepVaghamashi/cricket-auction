@@ -74,6 +74,16 @@ export async function GET(
     }
 
     if (lite) {
+      // Derive bidCounts from bidHistory as backward-compat fallback for
+      // documents written before bidCounts was introduced.
+      const bidCounts: Record<string, number> = state.bidCounts
+        ? (state.bidCounts as unknown as Record<string, number>)
+        : state.bidHistory.reduce<Record<string, number>>((acc, b) => {
+            const key = b.teamId.toString();
+            acc[key] = (acc[key] ?? 0) + 1;
+            return acc;
+          }, {});
+
       const litePayload = {
         _id: state._id?.toString(),
         auctionId: state.auctionId.toString(),
@@ -88,6 +98,8 @@ export async function GET(
           amount: b.amount,
           timestamp: b.timestamp.toISOString(),
         })),
+        // Accurate per-team count for the current round — never truncated.
+        bidCounts,
         updatedAt: state.updatedAt.toISOString(),
         currentPlayer: currentPlayer
           ? {
