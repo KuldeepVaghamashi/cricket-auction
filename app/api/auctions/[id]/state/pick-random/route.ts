@@ -92,8 +92,10 @@ export async function POST(
       { upsert: true }
     );
 
-    // Write-through: new clients see the picked player from Redis instantly.
-    void writeThroughPick(
+    // Await the write-through so the cache is populated BEFORE the socket event
+    // fires. Without await, the admin's revalidation triggered by notifyAuctionSubscribers
+    // could read the old cached state (previous player still in Redis).
+    await writeThroughPick(
       id,
       {
         _id: selectedPlayer._id!.toString(),

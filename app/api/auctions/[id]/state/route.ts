@@ -31,14 +31,14 @@ export async function GET(
     const db = await getDb();
     const auctionId = new ObjectId(id);
 
-    // Limit bidHistory to last 20 entries in both lite and full modes.
-    // The full array can grow indefinitely; clients never need the full history.
+    // Load the full document without slicing bidHistory.
+    // bidHistory is cleared on every pick-random and reset, so it only ever
+    // holds entries for the CURRENT player round (typically < 50 entries).
+    // Loading it whole lets us compute accurate bidCounts for documents that
+    // pre-date the bidCounts field, and avoids the 10-entry fallback cap.
     let state = await db
       .collection<AuctionState>("auctionStates")
-      .findOne(
-        { auctionId },
-        { projection: { bidHistory: { $slice: -20 } } } as any
-      );
+      .findOne({ auctionId });
 
     // Create state if doesn't exist
     if (!state) {
@@ -74,15 +74,19 @@ export async function GET(
     }
 
     if (lite) {
-      // Derive bidCounts from bidHistory as backward-compat fallback for
-      // documents written before bidCounts was introduced.
-      const bidCounts: Record<string, number> = state.bidCounts
-        ? (state.bidCounts as unknown as Record<string, number>)
-        : state.bidHistory.reduce<Record<string, number>>((acc, b) => {
-            const key = b.teamId.toString();
-            acc[key] = (acc[key] ?? 0) + 1;
-            return acc;
-          }, {});
+      // Use the server-side bidCounts field when present (added via $inc on
+      // every bid — always accurate regardless of bidHistory size).
+      // Fall back to a full scan of the current-round bidHistory for documents
+      // written before bidCounts was introduced. Since bidHistory is cleared on
+      // each pick-random/reset, this scan is bounded and always complete.
+      const bidCounts: Record<string, number> =
+        state.bidCounts && Object.keys(state.bidCounts).length > 0
+          ? (state.bidCounts as unknown as Record<string, number>)
+          : state.bidHistory.reduce<Record<string, number>>((acc, b) => {
+              const key = b.teamId.toString();
+              acc[key] = (acc[key] ?? 0) + 1;
+              return acc;
+            }, {});
 
       const litePayload = {
         _id: state._id?.toString(),

@@ -4,7 +4,7 @@ import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { AuctionState, Player, Team, Auction, AuctionLog } from "@/lib/types";
 import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
-import { writeThroughPatch } from "@/lib/auction-cache";
+import { invalidateCachedState } from "@/lib/auction-cache";
 
 // POST mark player as sold or unsold
 export async function POST(
@@ -154,7 +154,7 @@ export async function POST(
       }).catch((e) => console.error("unsold log insert failed:", e));
     }
 
-    // Reset auction state
+    // Reset auction state — clear bidHistory and bidCounts for the completed round.
     const completionAt = new Date();
     await db.collection<AuctionState>("auctionStates").updateOne(
       { auctionId },
@@ -165,6 +165,7 @@ export async function POST(
           currentTeamId: null,
           currentTeamName: null,
           bidHistory: [],
+          bidCounts: {},
           updatedAt: completionAt,
           lastAction: action,
           lastActionAt: completionAt,
@@ -175,22 +176,11 @@ export async function POST(
       }
     );
 
-    // Write-through: new clients connecting right after sold/unsold see the
-    // cleared state (no current player, no bids) from Redis instantly.
-    void writeThroughPatch(id, {
-      currentPlayerId: null,
-      currentBid: 0,
-      currentTeamId: null,
-      currentTeamName: null,
-      bidHistory: [],
-      updatedAt: completionAt.toISOString(),
-      lastAction: action,
-      lastActionAt: completionAt.toISOString(),
-      lastActionPlayerName: player.name,
-      lastActionTeamName: action === "sold" ? state.currentTeamName : null,
-      lastActionPrice: action === "sold" ? state.currentBid : null,
-      currentPlayer: null,
-    });
+    // Delete the Redis cache BEFORE notifying subscribers so that any
+    // revalidation triggered by the socket event reads fresh from MongoDB.
+    // writeThroughPatch is async — firing it void and then notifying immediately
+    // meant the admin could receive and render stale cached state.
+    await invalidateCachedState(id);
 
     // Completion updates:
     // - sold: auction state + team purses + player statuses + logs

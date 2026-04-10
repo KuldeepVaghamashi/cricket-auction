@@ -30,8 +30,12 @@ const stateKey = (auctionId: string) => `auction:state:${auctionId}`;
 // that has already expired and been acquired by another process.
 // ---------------------------------------------------------------------------
 
-/** Lock TTL in milliseconds. Covers worst-case DB round-trip time. */
-const BID_LOCK_TTL_MS = 500;
+/** Lock TTL in milliseconds. Covers worst-case DB round-trip time.
+ *  The critical section includes: 3 parallel DB reads + 1 updateOne + 1 Redis
+ *  write-through. On a remote cloud DB this can reach 800–1200 ms under load.
+ *  2000 ms gives safe headroom while still blocking subsequent bids for < 2 s
+ *  in the degenerate case where the lock expires before the holder releases it. */
+const BID_LOCK_TTL_MS = 2000;
 
 /**
  * Try to acquire the auction-level bid lock.

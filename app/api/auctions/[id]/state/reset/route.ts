@@ -4,7 +4,7 @@ import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { AuctionState, Player, AuctionLog } from "@/lib/types";
 import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
-import { writeThroughPatch } from "@/lib/auction-cache";
+import { invalidateCachedState } from "@/lib/auction-cache";
 
 // POST reset current bid
 export async function POST(
@@ -63,15 +63,11 @@ export async function POST(
       }
     );
 
-    // Write-through: new clients see the reset (base price, no team) instantly.
-    void writeThroughPatch(id, {
-      currentBid: player.basePrice,
-      currentTeamId: null,
-      currentTeamName: null,
-      bidHistory: [],
-      bidCounts: {},
-      updatedAt: resetAt.toISOString(),
-    });
+    // Delete the Redis cache BEFORE notifying subscribers.
+    // writeThroughPatch is async — if called void and notifyAuctionSubscribers
+    // fires immediately, the admin's revalidation hits the old cached state.
+    // Deleting the cache guarantees the next GET reads fresh from MongoDB.
+    await invalidateCachedState(id);
 
     // Log action
     await db.collection<AuctionLog>("auctionLogs").insertOne({

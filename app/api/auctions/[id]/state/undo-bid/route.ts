@@ -90,8 +90,10 @@ export async function POST(
       timestamp: new Date(),
     }).catch(() => {});
 
-    // Write-through: reflect the rolled-back bid in the cache immediately.
-    void writeThroughPatch(id, {
+    // Await the write-through so the cache is updated BEFORE the socket event
+    // fires. Without await, notifyAuctionSubscribers could trigger a revalidation
+    // that reads the old cached state.
+    await writeThroughPatch(id, {
       currentBid: last ? last.amount : player.basePrice,
       currentTeamId: last ? last.teamId?.toString() ?? null : null,
       currentTeamName: last ? last.teamName : null,
