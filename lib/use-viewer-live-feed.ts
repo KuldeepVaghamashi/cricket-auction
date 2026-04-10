@@ -2,78 +2,148 @@
 
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { KeyedMutator } from "swr";
-import { createAuctionLiveSocket, type AuctionInvScope, type AuctionDelta } from "@/lib/socket-client";
+import {
+  createAuctionLiveSocket,
+  type AuctionEvent,
+  type SnapshotEvent,
+  type BidEvent,
+  type SellEvent,
+  type UnsoldEvent,
+  type PickEvent,
+  type RefreshEvent,
+} from "@/lib/socket-client";
 import type { ViewerStreamPayload } from "@/lib/viewer-stream-types";
 import type { AuctionWithId } from "@/lib/types";
 
-function devWarn(message: string, err: unknown) {
-  if (process.env.NODE_ENV === "development") {
-    console.warn(message, err);
-  }
+function devWarn(msg: string, err?: unknown) {
+  if (process.env.NODE_ENV === "development") console.warn(msg, err);
 }
 
-function getSnapshotMode(scopes: AuctionInvScope[]): "full" | "state" | "stats" | null {
-  if (scopes.includes("a") || scopes.includes("vw")) return "full";
-  if (scopes.includes("tm")) return "full";
-  if (scopes.includes("pl")) return "stats";
-  if (scopes.includes("st") || scopes.includes("lg")) return "state";
-  return null;
-}
+// ---------------------------------------------------------------------------
+// Event application — each handler patches only the affected slice of state.
+// ---------------------------------------------------------------------------
 
-/**
- * Apply an inline delta from a WS push message directly onto the current
- * stream payload — no HTTP round-trip, no MongoDB read, instant render.
- *
- * Returns the merged payload, or null if no baseline exists yet
- * (caller should fall back to a full snapshot fetch in that case).
- */
-function applyDelta(
-  prev: ViewerStreamPayload | null,
-  delta: AuctionDelta
-): ViewerStreamPayload | null {
-  if (!prev) return null;
-
-  if (delta.newRound) {
-    // New player picked — reset bid state and update currentPlayer.
-    return {
-      ...prev,
-      currentPlayer: delta.currentPlayer ?? null,
-      state: prev.state
-        ? {
-            ...prev.state,
-            currentBid: delta.currentBid ?? 0,
-            currentTeamId: null,
-            currentTeamName: null,
-            bidHistory: [],
-          }
-        : prev.state,
-    };
-  }
-
-  // Bid event — patch only the fields that changed.
+function applyBidEvent(
+  prev: ViewerStreamPayload,
+  e: BidEvent
+): ViewerStreamPayload {
   return {
     ...prev,
     state: prev.state
       ? {
           ...prev.state,
-          ...(delta.currentBid !== undefined && { currentBid: delta.currentBid }),
-          ...(delta.currentTeamId !== undefined && { currentTeamId: delta.currentTeamId }),
-          ...(delta.currentTeamName !== undefined && { currentTeamName: delta.currentTeamName }),
-          ...(delta.bidEntry && {
-            bidHistory: [
-              ...(prev.state.bidHistory ?? []).slice(-9),
-              delta.bidEntry,
-            ],
-          }),
+          currentBid: e.currentBid,
+          currentTeamId: e.currentTeamId,
+          currentTeamName: e.currentTeamName,
+          bidHistory: [
+            ...(prev.state.bidHistory ?? []).slice(-9),
+            e.bidEntry,
+          ],
         }
       : prev.state,
   };
 }
 
+function applySellEvent(
+  prev: ViewerStreamPayload,
+  e: SellEvent
+): ViewerStreamPayload {
+  return {
+    ...prev,
+    state: prev.state
+      ? {
+          ...prev.state,
+          currentBid: 0,
+          currentTeamId: null,
+          currentTeamName: null,
+          bidHistory: [],
+          lastAction: "sold",
+          lastActionPrice: e.soldPrice,
+        }
+      : prev.state,
+    currentPlayer: null,
+    teams: (prev.teams ?? []).map((t) =>
+      t._id === e.teamId
+        ? { ...t, remainingBudget: e.newTeamRemainingBudget, playersCount: (t.playersCount ?? 0) + 1 }
+        : t
+    ),
+    playerStats: e.playerStats,
+  };
+}
+
+function applyUnsoldEvent(
+  prev: ViewerStreamPayload,
+  e: UnsoldEvent
+): ViewerStreamPayload {
+  return {
+    ...prev,
+    state: prev.state
+      ? {
+          ...prev.state,
+          currentBid: 0,
+          currentTeamId: null,
+          currentTeamName: null,
+          bidHistory: [],
+          lastAction: "unsold",
+          lastActionPrice: null,
+        }
+      : prev.state,
+    currentPlayer: null,
+    playerStats: e.playerStats,
+  };
+}
+
+function applyPickEvent(
+  prev: ViewerStreamPayload,
+  e: PickEvent
+): ViewerStreamPayload {
+  return {
+    ...prev,
+    currentPlayer: e.player,
+    state: prev.state
+      ? {
+          ...prev.state,
+          currentBid: e.player.basePrice,
+          currentTeamId: null,
+          currentTeamName: null,
+          bidHistory: [],
+        }
+      : prev.state,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot fetch — used on initial connect, reconnect, and gap detection.
+// ---------------------------------------------------------------------------
+
+async function fetchSnapshot(
+  id: string,
+  mode: "full" | "state" | "stats"
+): Promise<ViewerStreamPayload | null> {
+  try {
+    const r = await fetch(
+      `/api/auctions/${id}/viewer-snapshot?mode=${encodeURIComponent(mode)}`,
+      { cache: "no-store" }
+    );
+    return (await r.json()) as ViewerStreamPayload;
+  } catch (e) {
+    devWarn("viewer snapshot fetch error:", e);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
 /**
- * Live viewer transport: WebSocket invalidation + inline delta when available;
- * falls back to snapshot fetch for events that change teams/players/stats;
- * falls back to SSE when WebSocket is not available (e.g. Vercel).
+ * Live viewer transport: WebSocket v2 events (bid, sell, unsold, pick, refresh,
+ * snapshot) with sequence-number gap detection; falls back to SSE when
+ * WebSocket is not available (e.g. Vercel without custom server).
+ *
+ * SSE is now push-driven — stream/route.ts registers in auction-rooms.ts so
+ * events arrive the same way as WS, not via polling.  The SSE onmessage
+ * handler therefore uses the same applyEvent logic as the WS path.
  */
 export function useViewerLiveFeed(
   id: string | undefined,
@@ -85,28 +155,115 @@ export function useViewerLiveFeed(
   const sseModeRef = useRef(false);
   const mutateAuctionRef = useRef(mutateAuction);
   mutateAuctionRef.current = mutateAuction;
-  const lastFullRef = useRef<ViewerStreamPayload | null>(null);
+
+  /** Latest full payload — used as baseline for incremental events. */
+  const lastRef = useRef<ViewerStreamPayload | null>(null);
+  /** Last received sequence number — used to detect missed events. */
+  const lastSeqRef = useRef<number>(0);
 
   useEffect(() => {
     if (!isActive || !id) {
       sseModeRef.current = false;
       esRef.current?.close();
       esRef.current = null;
-      lastFullRef.current = null;
+      lastRef.current = null;
+      lastSeqRef.current = 0;
       setStreamData(null);
       return;
     }
 
     let cancelled = false;
 
-    const applyPayload = (parsed: ViewerStreamPayload) => {
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    const applyFull = (payload: ViewerStreamPayload, seq: number) => {
       if (cancelled) return;
-      lastFullRef.current = parsed;
-      setStreamData(parsed);
-      if (parsed.auction?.status && parsed.auction.status !== "active") {
+      lastRef.current = payload;
+      lastSeqRef.current = seq;
+      setStreamData(payload);
+      if (payload.auction?.status && payload.auction.status !== "active") {
         void mutateAuctionRef.current();
       }
     };
+
+    const patch = (updater: (prev: ViewerStreamPayload) => ViewerStreamPayload, seq: number) => {
+      if (cancelled) return;
+      const prev = lastRef.current;
+      if (!prev) return; // no baseline yet; gap detection will trigger a resync
+      const next = updater(prev);
+      lastRef.current = next;
+      lastSeqRef.current = seq;
+      setStreamData(next);
+    };
+
+    /** Check seq continuity; request resync if a gap is detected. */
+    const handleSeq = (seq: number): boolean => {
+      if (seq === 0) return true; // Redis unavailable, seq disabled
+      if (lastSeqRef.current === 0) return true; // first event after connect
+      if (seq === lastSeqRef.current + 1) return true; // expected
+      // Gap detected — fetch a fresh snapshot and anchor to its seq.
+      devWarn(`[viewer] seq gap: expected ${lastSeqRef.current + 1}, got ${seq} — resyncing`);
+      void fetchSnapshot(id, "full").then((snap) => {
+        if (snap) applyFull(snap, seq);
+      });
+      return false; // caller should not apply the event
+    };
+
+    // ── Unified event handler (WS + SSE) ─────────────────────────────────────
+
+    const handleEvent = (event: AuctionEvent) => {
+      if (cancelled) return;
+
+      if (event.type === "snapshot") {
+        // Initial full payload sent on connect/reconnect.
+        applyFull(event as unknown as ViewerStreamPayload, event.seq);
+        return;
+      }
+
+      if (!handleSeq(event.seq)) return;
+
+      switch (event.type) {
+        case "bid":
+          patch((prev) => applyBidEvent(prev, event as BidEvent), event.seq);
+          break;
+
+        case "sell":
+          patch((prev) => applySellEvent(prev, event as SellEvent), event.seq);
+          // Auction status may have changed; refresh auction meta.
+          void mutateAuctionRef.current();
+          break;
+
+        case "unsold":
+          patch((prev) => applyUnsoldEvent(prev, event as UnsoldEvent), event.seq);
+          break;
+
+        case "pick":
+          patch((prev) => applyPickEvent(prev, event as PickEvent), event.seq);
+          break;
+
+        case "refresh": {
+          // Low-frequency admin action (undo, reset, status change).
+          // Fetch only the affected slices.
+          const scopes = (event as RefreshEvent).scopes;
+          const mode =
+            scopes.includes("tm") || scopes.includes("pl") ? "full" : "state";
+          void fetchSnapshot(id, mode).then((snap) => {
+            if (!snap || cancelled) return;
+            const prev = lastRef.current;
+            if (!prev || mode === "full") {
+              applyFull(snap, event.seq);
+            } else {
+              patch((p) => ({ ...p, ...snap, timestamp: snap.timestamp ?? p.timestamp }), event.seq);
+            }
+          });
+          break;
+        }
+      }
+    };
+
+    // ── SSE fallback ──────────────────────────────────────────────────────────
+    // stream/route.ts is now push-driven — the same AuctionEvent format is used
+    // on both transports, so handleEvent works for SSE messages too.
 
     const openEventSource = () => {
       if (sseModeRef.current) return;
@@ -114,90 +271,36 @@ export function useViewerLiveFeed(
       esRef.current?.close();
       const es = new EventSource(`/api/auctions/${id}/stream`);
       esRef.current = es;
-      es.onmessage = (event) => {
+      es.onmessage = (ev) => {
         try {
-          applyPayload(JSON.parse(event.data) as ViewerStreamPayload);
+          const data = JSON.parse(ev.data) as AuctionEvent & { v?: number };
+          if (data?.v === 2) handleEvent(data);
         } catch (e) {
           devWarn("SSE parse error:", e);
         }
       };
     };
 
-    const fetchSnapshot = async (mode: "full" | "state" | "stats") => {
-      try {
-        const r = await fetch(
-          `/api/auctions/${id}/viewer-snapshot?mode=${encodeURIComponent(mode)}`,
-          { cache: "no-store" }
-        );
-        const j = (await r.json()) as Partial<ViewerStreamPayload> & { timestamp?: string };
-
-        if (cancelled) return;
-
-        const base = lastFullRef.current;
-        if (!base || mode === "full" || !base.teams || !base.playerStats) {
-          const full = j as ViewerStreamPayload;
-          lastFullRef.current = full;
-          setStreamData(full);
-          return;
-        }
-
-        const merged: ViewerStreamPayload = {
-          ...base,
-          ...j,
-          timestamp: j.timestamp ?? base.timestamp,
-        };
-        lastFullRef.current = merged;
-        setStreamData(merged);
-      } catch (e) {
-        devWarn("Viewer snapshot error:", e);
-      }
-    };
+    // ── WebSocket primary transport ───────────────────────────────────────────
 
     const socket = createAuctionLiveSocket({
       auctionId: id,
-      onInvalidate: (scopes, delta) => {
-        if (cancelled) return;
-
-        // ── Fast path: inline delta present ──────────────────────────────────
-        // Server embedded the changed values in the WS message itself.
-        // Apply directly to current state — zero extra network hop.
-        if (delta) {
-          const next = applyDelta(lastFullRef.current, delta);
-          if (next) {
-            lastFullRef.current = next;
-            setStreamData(next);
-
-            // If the same event also changes teams/players (e.g. sold), still
-            // fetch the full snapshot so purses and stats stay accurate.
-            if (scopes.some((s) => s === "tm" || s === "pl" || s === "vw" || s === "a")) {
-              void fetchSnapshot("full");
-            }
-            return;
-          }
-          // No baseline yet — fall through to snapshot fetch.
-        }
-
-        // ── Slow path: no delta or no baseline ───────────────────────────────
-        // This covers sold/unsold/reset/undo events where the full state must
-        // be re-fetched because teams or player stats may have changed.
-        const mode = getSnapshotMode(scopes);
-        if (mode) void fetchSnapshot(mode);
-      },
-
+      onEvent: handleEvent,
       onConnectionChange: (connected) => {
         if (cancelled) return;
         if (connected) {
+          // Switch off SSE if it was active.
           sseModeRef.current = false;
           esRef.current?.close();
           esRef.current = null;
-          // First payload must be full so we have teams + playerStats as baseline.
-          void fetchSnapshot("full");
+          // Fetch a full snapshot on connect to anchor the seq baseline.
+          void fetchSnapshot(id, "full").then((snap) => {
+            if (snap) applyFull(snap, lastSeqRef.current);
+          });
         }
       },
-
       onPrimaryTransportUnavailable: () => {
-        if (cancelled) return;
-        openEventSource();
+        if (!cancelled) openEventSource();
       },
     });
 

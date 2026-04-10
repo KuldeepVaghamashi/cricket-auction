@@ -3,7 +3,8 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { AuctionState, Player, Auction, AuctionLog } from "@/lib/types";
-import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
+import { pushAuctionEvent } from "@/lib/socket-hub";
+import { invalidateCachedState, incrSeq } from "@/lib/auction-cache";
 
 // POST pick random player
 export async function POST(
@@ -101,18 +102,19 @@ export async function POST(
       timestamp: new Date(),
     }).catch((e) => console.error("pick log insert failed:", e));
 
-    // Broadcast with inline delta so viewer clients instantly show the new player
-    // without an extra /viewer-snapshot fetch.
-    notifyAuctionSubscribers(id, ["st", "lg"], {
-      newRound: true,
-      currentPlayer: {
+    void invalidateCachedState(id);
+    const seq = await incrSeq(id);
+
+    // PickEvent carries the new player inline — viewers apply without a fetch.
+    pushAuctionEvent(id, {
+      v: 2,
+      type: "pick",
+      seq,
+      player: {
         _id: selectedPlayer._id!.toString(),
         name: selectedPlayer.name,
         basePrice: selectedPlayer.basePrice,
       },
-      currentBid: selectedPlayer.basePrice,
-      currentTeamId: null,
-      currentTeamName: null,
     });
 
     return NextResponse.json({

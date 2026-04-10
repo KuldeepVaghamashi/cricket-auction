@@ -59,7 +59,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useAuctionSocket, type AuctionLiveMutators } from "@/lib/use-auction-live-sync";
+import { useAuctionSocket, type AuctionLiveMutators, type BidEvent } from "@/lib/use-auction-live-sync";
 
 interface AuctionStateResponse {
   _id: string;
@@ -163,6 +163,32 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
     mutateTeams,
     mutatePlayers,
     mutateLogs,
+    patchState: (event: BidEvent) => {
+      // Echo suppression: skip if this WS message was triggered by our own bid.
+      // The optimistic update in handlePlaceBid already applied the same values.
+      if (event.requestId && event.requestId === pendingRequestIdRef.current) return;
+      mutateState(
+        (prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            currentBid: event.currentBid,
+            currentTeamId: event.currentTeamId,
+            currentTeamName: event.currentTeamName,
+            bidHistory: [
+              ...prev.bidHistory,
+              {
+                teamId: event.currentTeamId ?? "",
+                teamName: event.bidEntry.teamName,
+                amount: event.bidEntry.amount,
+                timestamp: event.bidEntry.timestamp,
+              },
+            ].slice(-20),
+          };
+        },
+        false // no revalidation — event is authoritative
+      );
+    },
   };
   useAuctionSocket(id, mutatorsRef, setAuctionWsConnected);
 
@@ -172,6 +198,8 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   const [error, setError] = useState<string | null>(null);
   const [pendingBid, setPendingBid] = useState<number | null>(null);
   const lastBidClickRef = useRef(0);
+  /** Tracks the requestId of the admin's own in-flight bid for echo suppression. */
+  const pendingRequestIdRef = useRef<string | null>(null);
 
   const refreshAll = useCallback(() => {
     mutateTeams();
@@ -259,11 +287,15 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
     if (now - lastBidClickRef.current < 180) return;
     lastBidClickRef.current = now;
 
-    // Make team selection feel instant and avoid blocking the whole UI.
     setBidLoadingTeamId(teamId);
     setError(null);
     const optimisticAt = new Date().toISOString();
     const teamName = teams?.find((t) => t._id === teamId)?.name ?? null;
+
+    // Generate a requestId so the WS echo of this bid can be suppressed —
+    // the optimistic update below already reflects the correct state.
+    const requestId = crypto.randomUUID();
+    pendingRequestIdRef.current = requestId;
 
     // Optimistic update for immediate UI feedback.
     mutateState(
@@ -285,23 +317,28 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
       },
       false
     );
-    
+
     try {
       const res = await fetch(`/api/auctions/${id}/state/bid`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId, amount }),
+        body: JSON.stringify({ teamId, amount, requestId }),
       });
       const data = await res.json();
       
       if (!res.ok) {
-        mutateState();
+        pendingRequestIdRef.current = null;
+        mutateState(); // roll back optimistic update
         setError(data.error);
       } else {
         setPendingBid(null);
         playTone(660, 80);
-        // Revalidate only state immediately; other datasets can remain on interval.
-        mutateState();
+        // Clear the echo-suppression token — any subsequent WS bid message
+        // (from a different admin or a delayed delivery) should be applied.
+        pendingRequestIdRef.current = null;
+        // If WS is not connected, revalidate so the fallback poll picks up
+        // the confirmed state from the server.
+        if (!auctionWsConnected) mutateState();
       }
     } finally {
       setBidLoadingTeamId(null);

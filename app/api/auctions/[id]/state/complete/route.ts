@@ -3,7 +3,8 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { AuctionState, Player, Team, Auction, AuctionLog } from "@/lib/types";
-import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
+import { pushAuctionEvent } from "@/lib/socket-hub";
+import { invalidateCachedState, incrSeq } from "@/lib/auction-cache";
 
 // POST mark player as sold or unsold
 export async function POST(
@@ -17,7 +18,7 @@ export async function POST(
     }
 
     const { id } = await params;
-    
+
     if (!ObjectId.isValid(id)) {
       return NextResponse.json({ error: "Invalid auction ID" }, { status: 400 });
     }
@@ -35,7 +36,6 @@ export async function POST(
     const db = await getDb();
     const auctionId = new ObjectId(id);
 
-    // Fetch auction + state in parallel — two independent reads, no reason to serialize.
     const [auction, state] = await Promise.all([
       db.collection<Auction>("auctions").findOne(
         { _id: auctionId },
@@ -47,14 +47,9 @@ export async function POST(
     if (!auction) {
       return NextResponse.json({ error: "Auction not found" }, { status: 404 });
     }
-
     if (auction.status !== "active") {
-      return NextResponse.json(
-        { error: "Auction is not active" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Auction is not active" }, { status: 400 });
     }
-
     if (!state || !state.currentPlayerId) {
       return NextResponse.json(
         { error: "No player is currently up for auction" },
@@ -64,26 +59,25 @@ export async function POST(
 
     const playerId = state.currentPlayerId;
 
-    // Get current player (depends on state.currentPlayerId from above, so sequential is correct).
-    const player = await db
-      .collection<Player>("players")
-      .findOne({ _id: playerId });
+    const player = await db.collection<Player>("players").findOne({ _id: playerId });
 
     if (!player) {
       return NextResponse.json({ error: "Player not found" }, { status: 404 });
     }
 
-    // Allow completion for both first-time and replayed players.
-    const isEligibleForCompletion =
-      player.status === "available" ||
-      player.status === "unsold";
-
-    if (!isEligibleForCompletion) {
+    const isEligible = player.status === "available" || player.status === "unsold";
+    if (!isEligible) {
       return NextResponse.json(
         { error: `Player is already ${player.status}` },
         { status: 400 }
       );
     }
+
+    const playersCol = db.collection<Player>("players");
+    const teamsCol   = db.collection<Team>("teams");
+    const logsCol    = db.collection<AuctionLog>("auctionLogs");
+
+    let newTeamRemainingBudget = 0;
 
     if (action === "sold") {
       if (!state.currentTeamId) {
@@ -93,34 +87,26 @@ export async function POST(
         );
       }
 
-      // Update player as sold
-      await db.collection<Player>("players").updateOne(
+      await playersCol.updateOne(
         { _id: playerId },
         {
-          $set: {
-            status: "sold",
-            soldTo: state.currentTeamId,
-            soldPrice: state.currentBid,
-          },
-          $unset: {
-            // Once sold, it should no longer be eligible for "unsold replay".
-            unsoldReplayed: "",
-          },
+          $set: { status: "sold", soldTo: state.currentTeamId, soldPrice: state.currentBid },
+          $unset: { unsoldReplayed: "" },
         }
       );
 
-      // Update team budget and players
-      await db.collection<Team>("teams").updateOne(
+      // Use findOneAndUpdate to get the updated budget in one round-trip.
+      const updatedTeam = await teamsCol.findOneAndUpdate(
         { _id: state.currentTeamId },
         {
           $inc: { remainingBudget: -state.currentBid },
-          // Idempotency: avoid duplicate entries if the same operation is retried.
           $addToSet: { playersBought: playerId },
-        }
+        },
+        { returnDocument: "after", projection: { remainingBudget: 1 } }
       );
+      newTeamRemainingBudget = updatedTeam?.remainingBudget ?? 0;
 
-      // Non-blocking log — same pattern as bid route; keeps response latency low.
-      void db.collection<AuctionLog>("auctionLogs").insertOne({
+      void logsCol.insertOne({
         auctionId,
         action: "player_sold",
         details: {
@@ -133,22 +119,15 @@ export async function POST(
         timestamp: new Date(),
       }).catch((e) => console.error("sold log insert failed:", e));
     } else {
-      // Mark as unsold
-      await db.collection<Player>("players").updateOne(
+      await playersCol.updateOne(
         { _id: playerId },
-        {
-          $set: { status: "unsold" },
-          $unset: { soldTo: "", soldPrice: "" },
-        }
+        { $set: { status: "unsold" }, $unset: { soldTo: "", soldPrice: "" } }
       );
 
-      void db.collection<AuctionLog>("auctionLogs").insertOne({
+      void logsCol.insertOne({
         auctionId,
         action: "player_unsold",
-        details: {
-          playerId: playerId.toString(),
-          playerName: player.name,
-        },
+        details: { playerId: playerId.toString(), playerName: player.name },
         timestamp: new Date(),
       }).catch((e) => console.error("unsold log insert failed:", e));
     }
@@ -174,12 +153,41 @@ export async function POST(
       }
     );
 
-    // Completion updates:
-    // - sold: auction state + team purses + player statuses + logs
-    // - unsold: auction state + player statuses + logs (teams do not change)
-    const scopes =
-      action === "sold" ? (["st", "tm", "pl", "lg"] as const) : (["st", "pl", "lg"] as const);
-    notifyAuctionSubscribers(id, scopes as any);
+    // Invalidate all caches (sell/unsold affect teams, player stats, state).
+    void invalidateCachedState(id);
+
+    // Compute accurate player stats after the update.
+    const [available, sold, unsold] = await Promise.all([
+      playersCol.countDocuments({ auctionId, status: "available" }),
+      playersCol.countDocuments({ auctionId, status: "sold" }),
+      playersCol.countDocuments({ auctionId, status: "unsold" }),
+    ]);
+
+    const seq = await incrSeq(id);
+    const playerStats = { available, sold, unsold };
+
+    // Publish typed event with inline delta so viewers update teams/stats
+    // without fetching a new snapshot.
+    if (action === "sold") {
+      pushAuctionEvent(id, {
+        v: 2,
+        type: "sell",
+        seq,
+        playerId: playerId.toString(),
+        teamId: state.currentTeamId!.toString(),
+        soldPrice: state.currentBid,
+        newTeamRemainingBudget,
+        playerStats,
+      });
+    } else {
+      pushAuctionEvent(id, {
+        v: 2,
+        type: "unsold",
+        seq,
+        playerId: playerId.toString(),
+        playerStats,
+      });
+    }
 
     return NextResponse.json({
       success: true,

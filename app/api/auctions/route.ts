@@ -10,7 +10,16 @@ export async function GET() {
     const db = await getDb();
     const auctions = await db
       .collection<Auction>("auctions")
-      .find({})
+      .find(
+        {},
+        {
+          projection: {
+            _id: 1, name: 1, date: 1, status: 1, budget: 1,
+            minBid: 1, minIncrement: 1, maxPlayersPerTeam: 1,
+            createdAt: 1, updatedAt: 1,
+          },
+        }
+      )
       .sort({ createdAt: -1 })
       .toArray();
 

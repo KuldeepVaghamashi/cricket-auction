@@ -1,10 +1,5 @@
-import { pushAuctionInvalidation, type AuctionInvScope, type AuctionDelta } from "@/lib/socket-hub";
-
-/** Fire-and-forget hint to WebSocket subscribers (no-op without custom server). */
-export function notifyAuctionSubscribers(
-  auctionId: string,
-  scopes: AuctionInvScope[] = ["a"],
-  delta?: AuctionDelta
-) {
-  pushAuctionInvalidation(auctionId, scopes, delta);
-}
+/**
+ * @deprecated Use pushAuctionEvent from lib/socket-hub.ts directly.
+ * This shim exists only so any remaining callers don't break during migration.
+ */
+export { pushAuctionEvent as notifyAuctionSubscribers } from "@/lib/socket-hub";

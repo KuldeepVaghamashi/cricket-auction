@@ -1,8 +1,25 @@
 "use client";
 
-import type { AuctionInvScope, AuctionDelta } from "@/lib/socket-hub";
+import type {
+  AuctionEvent,
+  BidEvent,
+  SellEvent,
+  UnsoldEvent,
+  PickEvent,
+  RefreshEvent,
+  SnapshotEvent,
+} from "@/lib/socket-hub";
 
-export type { AuctionInvScope, AuctionDelta };
+// Re-export types consumed by hooks and components.
+export type {
+  AuctionEvent,
+  BidEvent,
+  SellEvent,
+  UnsoldEvent,
+  PickEvent,
+  RefreshEvent,
+  SnapshotEvent,
+};
 
 export function getAuctionWsUrl(auctionId: string): string {
   if (typeof window === "undefined") return "";
@@ -13,23 +30,28 @@ export function getAuctionWsUrl(auctionId: string): string {
 type AuctionLiveSocketOptions = {
   auctionId: string;
   /**
-   * Called on every invalidation message.
-   * `delta` is present for high-frequency events (bid, pick) and contains the
-   * changed values inline — the viewer can apply them without a snapshot fetch.
+   * Called for every incoming v2 AuctionEvent (bid, sell, unsold, pick, refresh,
+   * or snapshot).  The caller is responsible for deciding what to do with each
+   * event type.
    */
-  onInvalidate: (scopes: AuctionInvScope[], delta?: AuctionDelta) => void;
+  onEvent: (event: AuctionEvent) => void;
   onConnectionChange?: (connected: boolean) => void;
   /**
-   * Invoked once when the socket never reaches `open` (e.g. plain `next dev` without custom server).
-   * After this, internal reconnect is disabled so the caller can fall back to SSE/polling.
+   * Invoked once when the socket never reaches `open` (e.g. plain `next dev`
+   * without the custom server).  Internal reconnect is disabled after this so
+   * the caller can fall back to SSE.
    */
   onPrimaryTransportUnavailable?: () => void;
 };
 
 /**
- * Native WebSocket client with reconnect after successful sessions only.
+ * Native WebSocket client with exponential-backoff reconnect.
+ * Reconnects only after at least one successful open (avoids infinite retry
+ * when the server does not support WebSockets at all).
  */
-export function createAuctionLiveSocket(options: AuctionLiveSocketOptions): { close: () => void } {
+export function createAuctionLiveSocket(
+  options: AuctionLiveSocketOptions
+): { close: () => void } {
   let ws: WebSocket | null = null;
   let closed = false;
   let attempt = 0;
@@ -70,15 +92,10 @@ export function createAuctionLiveSocket(options: AuctionLiveSocketOptions): { cl
 
     socket.onmessage = (ev) => {
       try {
-        const data = JSON.parse(String(ev.data)) as {
-          v?: number;
-          t?: string;
-          s?: AuctionInvScope[];
-          d?: AuctionDelta;
-        };
-        if (data?.v === 1 && data.t === "inv" && Array.isArray(data.s)) {
-          // Pass optional inline delta — viewer applies it without a snapshot fetch.
-          options.onInvalidate(data.s, data.d);
+        const data = JSON.parse(String(ev.data)) as AuctionEvent & { v?: number };
+        // Only handle v2 events; silently ignore anything else.
+        if (data?.v === 2) {
+          options.onEvent(data);
         }
       } catch {
         /* ignore malformed */
@@ -103,7 +120,8 @@ export function createAuctionLiveSocket(options: AuctionLiveSocketOptions): { cl
 
       if (!closed) {
         attempt += 1;
-        const delay = Math.min(maxDelay, 800 * Math.pow(1.6, Math.min(attempt, 10)));
+        const jitter = Math.random() * 400; // ±200 ms to spread reconnect storms
+        const delay = Math.min(maxDelay, 800 * Math.pow(1.6, Math.min(attempt, 10))) + jitter;
         timer = setTimeout(connect, delay);
       }
     };

@@ -3,8 +3,14 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import { validateBid } from "@/lib/auction-utils";
-import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
-import { acquireBidLock, releaseBidLock, invalidateCachedState } from "@/lib/auction-cache";
+import {
+  acquireBidLock,
+  releaseBidLock,
+  getCachedState,
+  writeThroughBidState,
+  incrSeq,
+} from "@/lib/auction-cache";
+import { pushAuctionEvent } from "@/lib/socket-hub";
 import type { AuctionState, Team, Auction, AuctionLog } from "@/lib/types";
 
 /**
@@ -40,7 +46,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { teamId, amount } = body;
+    const { teamId, amount, requestId } = body;
 
     if (!teamId || amount === undefined) {
       return NextResponse.json({ error: "Team ID and amount are required" }, { status: 400 });
@@ -67,9 +73,6 @@ export async function POST(
     bidThrottleMap.set(throttleKey, nowMs);
 
     // ── Distributed auction-level lock ───────────────────────────────────────
-    // Serialises all bids for the same auction across every server instance.
-    // Prevents two simultaneous bids from both reading the same currentBid,
-    // both passing validation, and the second overwriting the first.
     const lockToken = await acquireBidLock(id);
     if (!lockToken) {
       return NextResponse.json(
@@ -84,13 +87,11 @@ export async function POST(
       const teamObjectId = new ObjectId(teamId);
 
       const auctionsCol = db.collection<Auction>("auctions");
-      const teamsCol = db.collection<Team>("teams");
-      const statesCol = db.collection<AuctionState>("auctionStates");
-      const logsCol = db.collection<AuctionLog>("auctionLogs");
+      const teamsCol    = db.collection<Team>("teams");
+      const statesCol   = db.collection<AuctionState>("auctionStates");
+      const logsCol     = db.collection<AuctionLog>("auctionLogs");
 
-      // Fetch auction, team, and state in parallel (minimal projections).
-      // Always read fresh from MongoDB inside the lock — cache is for reads
-      // outside the critical section.
+      // Always read fresh from MongoDB inside the lock.
       const [auction, team, state] = await Promise.all([
         auctionsCol.findOne(
           { _id: auctionId },
@@ -114,23 +115,17 @@ export async function POST(
         ),
       ]);
 
-      if (!auction) {
-        return NextResponse.json({ error: "Auction not found" }, { status: 404 });
-      }
+      if (!auction) return NextResponse.json({ error: "Auction not found" }, { status: 404 });
       if (auction.status !== "active") {
         return NextResponse.json({ error: "Auction is not active" }, { status: 400 });
       }
-      if (!team) {
-        return NextResponse.json({ error: "Team not found" }, { status: 404 });
-      }
+      if (!team) return NextResponse.json({ error: "Team not found" }, { status: 404 });
       if (!state || !state.currentPlayerId) {
         return NextResponse.json(
           { error: "No player is currently up for auction" },
           { status: 400 }
         );
       }
-
-      // Leading team cannot outbid itself.
       if (state.currentTeamId?.toString() === teamObjectId.toString()) {
         return NextResponse.json(
           { error: "Leading team cannot place another bid" },
@@ -138,14 +133,13 @@ export async function POST(
         );
       }
 
-      // Business-rule validation (budget, increment, slot limits).
       const isFirstBid = state.currentTeamId === null;
       const validation = validateBid(bidValue, team, auction, state.currentBid, { isFirstBid });
       if (!validation.valid) {
         return NextResponse.json({ error: validation.error }, { status: 400 });
       }
 
-      // ── Atomic write ────────────────────────────────────────────────────────
+      // ── Atomic DB write ─────────────────────────────────────────────────────
       const bidEntry = {
         teamId: teamObjectId,
         teamName: team.name,
@@ -167,10 +161,26 @@ export async function POST(
         }
       );
 
-      // Invalidate cached state so the next GET returns fresh data.
-      void invalidateCachedState(id);
+      // ── Sequence number ─────────────────────────────────────────────────────
+      const seq = await incrSeq(id);
 
-      // Non-blocking audit log.
+      // ── Write-through cache ─────────────────────────────────────────────────
+      // Fetch the current cached state to merge bid into it (avoids empty window).
+      const prevCached = (await getCachedState(id)) ?? {};
+      void writeThroughBidState(id, prevCached, {
+        currentBid: bidValue,
+        currentTeamId: teamId,
+        currentTeamName: team.name,
+        bidEntry: {
+          teamId,
+          teamName: team.name,
+          amount: bidValue,
+          timestamp: updatedAt.toISOString(),
+        },
+        updatedAt: updatedAt.toISOString(),
+      });
+
+      // ── Non-blocking audit log ──────────────────────────────────────────────
       void logsCol
         .insertOne({
           auctionId,
@@ -180,9 +190,15 @@ export async function POST(
         })
         .catch((e) => console.error("Bid log insert failed:", e));
 
-      // Broadcast with inline bid delta so viewer clients update instantly
-      // without making a second HTTP round-trip to /viewer-snapshot.
-      notifyAuctionSubscribers(id, ["st", "lg"], {
+      // ── Publish typed event ─────────────────────────────────────────────────
+      // BidEvent carries the full delta inline.  Viewers apply it without an
+      // extra /viewer-snapshot fetch.  The requestId is echoed so the originating
+      // admin tab can suppress the echo (it already applied an optimistic update).
+      pushAuctionEvent(id, {
+        v: 2,
+        type: "bid",
+        seq,
+        ...(typeof requestId === "string" && requestId ? { requestId } : {}),
         currentBid: bidValue,
         currentTeamId: teamId,
         currentTeamName: team.name,
@@ -201,7 +217,6 @@ export async function POST(
         updatedAt: updatedAt.toISOString(),
       });
     } finally {
-      // Always release — even if an error was thrown above.
       void releaseBidLock(id, lockToken);
     }
   } catch (error) {

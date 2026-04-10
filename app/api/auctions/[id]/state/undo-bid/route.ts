@@ -3,7 +3,8 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { AuctionState, Player, AuctionLog } from "@/lib/types";
-import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
+import { pushAuctionEvent } from "@/lib/socket-hub";
+import { invalidateCachedState, incrSeq } from "@/lib/auction-cache";
 
 // POST undo latest bid (only the most recent bidHistory entry)
 export async function POST(
@@ -80,8 +81,11 @@ export async function POST(
       timestamp: new Date(),
     }).catch(() => {});
 
-    // Undo affects auction state (bid + history) and logs only.
-    notifyAuctionSubscribers(id, ["st", "lg"]);
+    void invalidateCachedState(id);
+    const seq = await incrSeq(id);
+
+    // RefreshEvent: low-frequency admin action; clients re-fetch state + logs.
+    pushAuctionEvent(id, { v: 2, type: "refresh", seq, scopes: ["st", "lg"] });
 
     return NextResponse.json({
       success: true,

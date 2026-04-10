@@ -21,7 +21,15 @@ export async function GET(
 
     const players = await db
       .collection<Player>("players")
-      .find({ auctionId })
+      .find(
+        { auctionId },
+        {
+          projection: {
+            _id: 1, auctionId: 1, name: 1, basePrice: 1,
+            status: 1, soldTo: 1, soldPrice: 1, phone: 1, createdAt: 1,
+          },
+        }
+      )
       .sort({ createdAt: -1 })
       .toArray();
 

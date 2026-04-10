@@ -19,6 +19,8 @@ async function ensureIndexes(db: Db) {
     db.collection("teams").createIndex({ auctionId: 1 }),
     db.collection("players").createIndex({ auctionId: 1, status: 1 }),
     db.collection("players").createIndex({ auctionId: 1, soldTo: 1 }),
+    // Compound index for roster lookups filtered by all three fields at once.
+    db.collection("players").createIndex({ auctionId: 1, status: 1, soldTo: 1 }),
     db.collection("players").createIndex(
       { auctionId: 1, phone: 1 },
       {

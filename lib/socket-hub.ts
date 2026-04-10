@@ -1,70 +1,114 @@
 /**
- * Process bridge between API route handlers and the WebSocket broadcaster.
+ * Event hub — API routes publish auction events here; the hub fans them out
+ * to connected clients via Redis pub/sub (multi-instance) or direct in-process
+ * broadcast (single-instance / Redis unavailable).
  *
- * Key change: AuctionWsPush now carries an optional `d` (delta) field.
- * For high-frequency bid events the server embeds the changed values directly
- * in the WS message so the viewer can apply them instantly — zero extra HTTP
- * round-trip. For low-frequency events (sold, unsold, pick) the field is
- * omitted and the client falls back to a snapshot fetch as before.
+ * Protocol v2: typed AuctionEvent union replaces the v1 scope-invalidation
+ * approach.  Every event carries a `seq` (monotonic counter per auction stored
+ * in Redis) so clients can detect gaps and request a resync.
+ *
+ * Event types
+ * ──────────
+ *  bid     High-frequency. Full inline delta: clients update without a fetch.
+ *  sell    Carries team-budget delta + player stats. Was N×snapshot per sell.
+ *  unsold  Carries player stats delta.
+ *  pick    New player selected. Carries player data; resets bid state.
+ *  refresh Low-frequency (undo, reset, status change). Clients re-fetch scopes.
+ *  snapshot Initial full payload sent once on SSE/WS connect.
  */
 
 import { getRedis, REDIS_AVAILABLE } from "@/lib/redis";
+import { broadcastToRoom } from "@/lib/auction-rooms";
+import type { ViewerStreamPayload } from "@/lib/viewer-stream-types";
 
-export type AuctionInvScope = "st" | "tm" | "pl" | "lg" | "vw" | "a";
+// Channel must match the one auction-rooms.ts subscribes to.
+export const redisAuctionChannel = (id: string) => `auction:${id}:events`;
+
+// ---------------------------------------------------------------------------
+// Event types
+// ---------------------------------------------------------------------------
+
+export type BidEvent = {
+  v: 2;
+  type: "bid";
+  seq: number;
+  /** Echoed back to the originating admin tab for deduplication. */
+  requestId?: string;
+  currentBid: number;
+  currentTeamId: string | null;
+  currentTeamName: string | null;
+  bidEntry: { teamName: string; amount: number; timestamp: string };
+};
+
+export type SellEvent = {
+  v: 2;
+  type: "sell";
+  seq: number;
+  playerId: string;
+  teamId: string;
+  soldPrice: number;
+  /** Team's remainingBudget after the deduction — avoids a teams re-fetch. */
+  newTeamRemainingBudget: number;
+  playerStats: { available: number; sold: number; unsold: number };
+};
+
+export type UnsoldEvent = {
+  v: 2;
+  type: "unsold";
+  seq: number;
+  playerId: string;
+  playerStats: { available: number; sold: number; unsold: number };
+};
+
+export type PickEvent = {
+  v: 2;
+  type: "pick";
+  seq: number;
+  player: { _id: string; name: string; basePrice: number };
+};
 
 /**
- * Inline delta included in WS push messages so viewers update state
- * without an extra HTTP fetch.
- *
- * Bid event  → currentBid / currentTeamId / currentTeamName / bidEntry
- * Pick event → currentPlayer / currentBid / newRound: true (bid history reset)
+ * Low-frequency admin actions (undo-bid, reset, status change).
+ * Clients re-fetch only the listed scopes instead of the full snapshot.
  */
-export type AuctionDelta = {
-  currentBid?: number;
-  currentTeamId?: string | null;
-  currentTeamName?: string | null;
-  bidEntry?: { teamName: string; amount: number; timestamp: string };
-  currentPlayer?: { _id: string; name: string; basePrice: number } | null;
-  /** true when a new player is picked — tells the client to wipe bid history */
-  newRound?: boolean;
+export type RefreshEvent = {
+  v: 2;
+  type: "refresh";
+  seq: number;
+  scopes: Array<"st" | "tm" | "pl" | "lg">;
 };
 
-export type AuctionWsPush = {
-  v: 1;
-  t: "inv";
-  s: AuctionInvScope[];
-  /** Optional inline delta — client applies directly, skips snapshot fetch */
-  d?: AuctionDelta;
-};
+/**
+ * Sent once on SSE/WS connect — carries the full viewer snapshot plus seq so
+ * the client can anchor gap detection from there.
+ */
+export type SnapshotEvent = ViewerStreamPayload & { v: 2; type: "snapshot"; seq: number };
 
-/** Redis channel — all instances subscribe here */
-export const REDIS_AUCTION_CHANNEL = "auction:invalidations";
+export type AuctionEvent =
+  | BidEvent
+  | SellEvent
+  | UnsoldEvent
+  | PickEvent
+  | RefreshEvent
+  | SnapshotEvent;
 
-type LocalEmitter = (auctionId: string, msg: AuctionWsPush) => void;
-let localEmit: LocalEmitter = () => {};
+// ---------------------------------------------------------------------------
+// Publish
+// ---------------------------------------------------------------------------
 
-export function registerAuctionWsEmit(fn: LocalEmitter): void {
-  localEmit = fn;
-}
-
-export function pushAuctionInvalidation(
-  auctionId: string,
-  scopes: AuctionInvScope[],
-  delta?: AuctionDelta
-): void {
-  const s: AuctionInvScope[] = scopes.includes("a") ? ["a"] : scopes;
-  const msg: AuctionWsPush = { v: 1, t: "inv", s, ...(delta ? { d: delta } : {}) };
+export function pushAuctionEvent(auctionId: string, event: AuctionEvent): void {
+  const raw = JSON.stringify(event);
 
   if (!REDIS_AVAILABLE) {
-    localEmit(auctionId, msg);
+    broadcastToRoom(auctionId, raw);
     return;
   }
 
-  const payload = JSON.stringify({ auctionId, msg });
+  const payload = JSON.stringify({ auctionId, event });
   getRedis()
-    .publish(REDIS_AUCTION_CHANNEL, payload)
+    .publish(redisAuctionChannel(auctionId), payload)
     .catch((err: Error) => {
       console.error("[socket-hub] Redis publish error, using local fallback:", err.message);
-      localEmit(auctionId, msg);
+      broadcastToRoom(auctionId, raw);
     });
 }

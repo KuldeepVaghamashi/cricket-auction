@@ -3,7 +3,8 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { AuctionState, Player, AuctionLog } from "@/lib/types";
-import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
+import { pushAuctionEvent } from "@/lib/socket-hub";
+import { invalidateCachedState, incrSeq } from "@/lib/auction-cache";
 
 // POST reset current bid
 export async function POST(
@@ -72,8 +73,10 @@ export async function POST(
       timestamp: new Date(),
     });
 
-    // Reset affects only auction state (current bid resets) and logs.
-    notifyAuctionSubscribers(id, ["st", "lg"]);
+    void invalidateCachedState(id);
+    const seq = await incrSeq(id);
+
+    pushAuctionEvent(id, { v: 2, type: "refresh", seq, scopes: ["st", "lg"] });
 
     return NextResponse.json({
       success: true,
