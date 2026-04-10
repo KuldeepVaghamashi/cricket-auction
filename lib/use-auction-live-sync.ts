@@ -30,11 +30,18 @@ export type AuctionLiveMutators = {
  * Falls back gracefully to SWR polling when Socket.IO cannot connect
  * (e.g. Vercel / plain `next dev`).  Pass a ref that you fill with mutate
  * callbacks after `useSWR` (same render is fine).
+ *
+ * @param suppressBidUpdateRef  When truthy the next "bid:update" socket event
+ *   skips the state GET and clears the flag. Set it to true right after the
+ *   placing-admin has applied the bid response directly to SWR state so that
+ *   the echo of their own bid doesn't trigger a redundant network round-trip.
+ *   Other admins' bid events (flag is false) still revalidate normally.
  */
 export function useAuctionSocket(
   auctionId: string | undefined,
   mutatorsRef: MutableRefObject<AuctionLiveMutators>,
-  onConnectionChange?: (connected: boolean) => void
+  onConnectionChange?: (connected: boolean) => void,
+  suppressBidUpdateRef?: MutableRefObject<boolean>
 ) {
   const onConn = useRef(onConnectionChange);
   onConn.current = onConnectionChange;
@@ -67,7 +74,16 @@ export function useAuctionSocket(
     // Also refresh logs — the bid was written to auctionLogs but the bid route
     // no longer fires "auction:invalidate" on Socket.IO to prevent double-firing.
     socket.on("bid:update", () => {
-      mutatorsRef.current.mutateState?.();
+      // If the placing-admin already applied the bid response directly to SWR
+      // state, skip the revalidation GET for this echo of their own bid.
+      // Any subsequent bid:update (from another admin or the next bid) will
+      // have the flag cleared and will revalidate normally.
+      if (suppressBidUpdateRef?.current) {
+        suppressBidUpdateRef.current = false;
+      } else {
+        mutatorsRef.current.mutateState?.();
+      }
+      // Always refresh logs — the audit entry was written regardless of who bid.
       mutatorsRef.current.mutateLogs?.();
     });
 
@@ -89,5 +105,5 @@ export function useAuctionSocket(
       socket.off();
       socket.disconnect();
     };
-  }, [auctionId, mutatorsRef]);
+  }, [auctionId, mutatorsRef, suppressBidUpdateRef]);
 }

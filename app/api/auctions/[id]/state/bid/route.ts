@@ -5,7 +5,7 @@ import { isAuthenticated } from "@/lib/auth";
 import { validateBid } from "@/lib/auction-utils";
 import { pushAuctionInvalidation } from "@/lib/socket-hub";
 import { emitBidUpdate } from "@/lib/socket-io-server";
-import { acquireBidLock, releaseBidLock, writeThroughBid } from "@/lib/auction-cache";
+import { acquireBidLock, releaseBidLock, invalidateCachedState } from "@/lib/auction-cache";
 import type { AuctionState, Team, Auction, AuctionLog } from "@/lib/types";
 
 /**
@@ -104,12 +104,15 @@ export async function POST(
         statesCol.findOne(
           { auctionId },
           {
+            // bidHistory is NOT needed for bid validation — omitting it makes
+            // the read smaller and faster. bidCounts is needed so we can return
+            // the updated counts in the response without an extra DB round-trip.
             projection: {
               currentPlayerId: 1,
               currentBid: 1,
               currentTeamId: 1,
               currentTeamName: 1,
-              bidHistory: 1,
+              bidCounts: 1,
             },
           }
         ),
@@ -147,13 +150,23 @@ export async function POST(
       }
 
       // ── Atomic write ────────────────────────────────────────────────────────
-      const bidEntry = {
+      const bidTimestamp = new Date();
+      const bidEntryForDb = {
         teamId: teamObjectId,
         teamName: team.name,
         amount: bidValue,
-        timestamp: new Date(),
+        timestamp: bidTimestamp,
       };
-      const updatedAt = new Date();
+      const updatedAt = bidTimestamp;
+
+      // Compute next bidCounts locally so we can return it in the response
+      // without an extra DB round-trip. state.bidCounts is the pre-write value
+      // read at the top of the lock, so incrementing here is always accurate.
+      const prevBidCounts = (state.bidCounts as Record<string, number> | undefined) ?? {};
+      const nextBidCounts: Record<string, number> = {
+        ...prevBidCounts,
+        [teamId]: (prevBidCounts[teamId] ?? 0) + 1,
+      };
 
       await statesCol.updateOne(
         { auctionId },
@@ -164,29 +177,19 @@ export async function POST(
             currentTeamName: team.name,
             updatedAt,
           },
-          $push: { bidHistory: bidEntry },
-          // Atomically increment the per-team bid count for the current round.
-          // More accurate than computing count from the sliced bidHistory payload.
+          $push: { bidHistory: bidEntryForDb },
+          // Atomically increment the per-team bid count — always accurate,
+          // never truncated like bidHistory which is sliced for payloads.
           $inc: { [`bidCounts.${teamId}`]: 1 } as any,
         }
       );
 
-      // Write-through: patch the cached state with the new bid so the next
-      // client to connect gets current data from Redis, not MongoDB.
-      // Awaited inside the bid lock — the read-modify-write is fully
-      // serialised, so no concurrent bid can race this cache update.
-      await writeThroughBid(id, {
-        currentBid: bidValue,
-        currentTeamId: teamId,
-        currentTeamName: team.name,
-        bidEntry: {
-          teamId,
-          teamName: team.name,
-          amount: bidValue,
-          timestamp: updatedAt.toISOString(),
-        },
-        updatedAt: updatedAt.toISOString(),
-      });
+      // Invalidate the Redis cache immediately so the next GET (from any
+      // client) reads the just-committed state from MongoDB rather than stale
+      // cached data. This is a single DEL — cheaper than the previous
+      // GET+SETEX write-through, and it keeps the lock held for less time.
+      // Fire-and-forget: cache miss on next GET is safe (cold read from MongoDB).
+      void invalidateCachedState(id);
 
       // Non-blocking audit log.
       void logsCol
@@ -198,6 +201,16 @@ export async function POST(
         })
         .catch((e) => console.error("Bid log insert failed:", e));
 
+      const bidTimestampIso = bidTimestamp.toISOString();
+
+      // Serialisable bid entry for response and WS delta.
+      const bidEntryForPayload = {
+        teamId,
+        teamName: team.name,
+        amount: bidValue,
+        timestamp: bidTimestampIso,
+      };
+
       // Native WS → viewer clients only (inline delta avoids a second HTTP round-trip).
       // Admin clients are notified via emitBidUpdate below — using both channels
       // would cause a double SWR mutation per bid (event flooding).
@@ -208,7 +221,7 @@ export async function POST(
         bidEntry: {
           teamName: team.name,
           amount: bidValue,
-          timestamp: updatedAt.toISOString(),
+          timestamp: bidTimestampIso,
         },
       });
 
@@ -218,15 +231,19 @@ export async function POST(
         currentBid: bidValue,
         currentTeamId: teamId,
         currentTeamName: team.name,
-        updatedAt: updatedAt.toISOString(),
+        updatedAt: bidTimestampIso,
       });
 
+      // Return full confirmed state so the placing-admin can update local
+      // SWR state directly from this response — no extra GET needed.
       return NextResponse.json({
         success: true,
         currentBid: bidValue,
         currentTeamId: teamId,
         currentTeamName: team.name,
-        updatedAt: updatedAt.toISOString(),
+        updatedAt: bidTimestampIso,
+        bidEntry: bidEntryForPayload,
+        bidCounts: nextBidCounts,
       });
     } finally {
       // Always release — even if an error was thrown above.

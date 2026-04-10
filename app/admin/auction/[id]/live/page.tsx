@@ -166,14 +166,18 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
     mutatePlayers,
     mutateLogs,
   };
-  useAuctionSocket(id, mutatorsRef, setAuctionWsConnected);
+  // When the placing-admin has already applied bid response data directly to
+  // SWR state, we set this ref to true so the echo of their own bid:update
+  // socket event skips the redundant state GET. Other admins' events (flag is
+  // false/cleared) still revalidate normally, keeping multi-admin sync intact.
+  const suppressBidUpdateRef = useRef(false);
+  useAuctionSocket(id, mutatorsRef, setAuctionWsConnected, suppressBidUpdateRef);
 
   const [loading, setLoading] = useState(false);
   const [bidLoadingTeamId, setBidLoadingTeamId] = useState<string | null>(null);
   const [undoLoading, setUndoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingBid, setPendingBid] = useState<number | null>(null);
-  const lastBidClickRef = useRef(0);
 
   const refreshAll = useCallback(() => {
     mutateTeams();
@@ -261,21 +265,20 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   };
 
   const handlePlaceBid = async (teamId: string, amount: number) => {
-    const now = Date.now();
-    if (now - lastBidClickRef.current < 180) return;
-    // Prevent concurrent bids: if any bid is already in-flight, ignore the click.
-    // Two simultaneous bid requests cause state confusion and one will be rejected
-    // by the distributed lock anyway — blocking here keeps the UI consistent.
+    // Block only if a bid POST is already in-flight — prevents duplicate
+    // requests for the same click but does NOT block rapid clicks on
+    // different teams once the previous response has been received.
+    // The 180 ms lastBidClickRef throttle has been removed: it was blocking
+    // legitimate rapid team switches and is redundant with this guard plus the
+    // server-side per-team 250 ms throttle.
     if (bidLoadingTeamId !== null) return;
-    lastBidClickRef.current = now;
 
-    // Make team selection feel instant and avoid blocking the whole UI.
     setBidLoadingTeamId(teamId);
     setError(null);
     const optimisticAt = new Date().toISOString();
     const teamName = teams?.find((t) => t._id === teamId)?.name ?? null;
 
-    // Optimistic update for immediate UI feedback.
+    // Optimistic update — makes the UI feel instant before the server confirms.
     mutateState(
       (prev) => {
         if (!prev) return prev;
@@ -285,22 +288,15 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
           amount: Number(amount),
           timestamp: optimisticAt,
         };
-        // Keep same -10 slice as the server so the optimistic array length
-        // matches what revalidation will return — prevents a history-length jump.
         const nextHistory = [...prev.bidHistory, nextBid].slice(-10);
-        // Increment the optimistic bid count for this team.
         const prevCounts = prev.bidCounts ?? {};
-        const nextCounts = {
-          ...prevCounts,
-          [teamId]: (prevCounts[teamId] ?? 0) + 1,
-        };
         return {
           ...prev,
           currentBid: Number(amount),
           currentTeamId: teamId,
           currentTeamName: teamName,
           bidHistory: nextHistory,
-          bidCounts: nextCounts,
+          bidCounts: { ...prevCounts, [teamId]: (prevCounts[teamId] ?? 0) + 1 },
         };
       },
       false
@@ -315,15 +311,34 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
       const data = await res.json();
 
       if (!res.ok) {
-        // Revert optimistic update on failure.
+        // Server rejected — roll back optimistic update to confirmed DB state.
         mutateState();
         setError(data.error);
       } else {
         setPendingBid(null);
         playTone(660, 80);
-        // Always revalidate so the confirmed server state (with accurate
-        // bidCounts from $inc) overwrites the optimistic estimate.
-        mutateState();
+
+        // Apply the confirmed server state directly from the response — no
+        // extra GET needed. The response includes bidEntry and bidCounts so
+        // we can update every relevant field accurately in one pass.
+        // We then tell the socket hook to skip the next bid:update echo so
+        // the admin doesn't suffer a redundant round-trip for their own bid.
+        suppressBidUpdateRef.current = true;
+        mutateState(
+          (prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              currentBid: data.currentBid,
+              currentTeamId: data.currentTeamId,
+              currentTeamName: data.currentTeamName,
+              updatedAt: data.updatedAt,
+              bidHistory: [...prev.bidHistory.slice(0, -1), data.bidEntry].slice(-10),
+              bidCounts: data.bidCounts,
+            };
+          },
+          false // confirmed data — no revalidation GET
+        );
       }
     } finally {
       setBidLoadingTeamId(null);
