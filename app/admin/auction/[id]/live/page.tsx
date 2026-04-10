@@ -173,6 +173,17 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   const suppressBidUpdateRef = useRef(false);
   useAuctionSocket(id, mutatorsRef, setAuctionWsConnected, suppressBidUpdateRef);
 
+  // ── Bid queue ──────────────────────────────────────────────────────────────
+  // inflightBidRef: true while a bid POST is in-flight (ref, not state — no re-render needed)
+  // queuedBidRef:   holds the next bid to fire the moment the in-flight POST completes.
+  //                 Latest click always wins; older queued bids are overwritten.
+  //
+  // This decouples "click accepted + optimistic update shown" (instant, every click)
+  // from "POST sent to server" (serialised, one at a time). The admin can click
+  // Team B immediately after Team A without waiting for A's HTTP round-trip.
+  const inflightBidRef = useRef(false);
+  const queuedBidRef = useRef<{ teamId: string; amount: number; teamName: string } | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [bidLoadingTeamId, setBidLoadingTeamId] = useState<string | null>(null);
   const [undoLoading, setUndoLoading] = useState(false);
@@ -264,85 +275,139 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
     }
   };
 
-  const handlePlaceBid = async (teamId: string, amount: number) => {
-    // Block only if a bid POST is already in-flight — prevents duplicate
-    // requests for the same click but does NOT block rapid clicks on
-    // different teams once the previous response has been received.
-    // The 180 ms lastBidClickRef throttle has been removed: it was blocking
-    // legitimate rapid team switches and is redundant with this guard plus the
-    // server-side per-team 250 ms throttle.
-    if (bidLoadingTeamId !== null) return;
-
-    setBidLoadingTeamId(teamId);
-    setError(null);
-    const optimisticAt = new Date().toISOString();
-    const teamName = teams?.find((t) => t._id === teamId)?.name ?? null;
-
-    // Optimistic update — makes the UI feel instant before the server confirms.
-    mutateState(
-      (prev) => {
-        if (!prev) return prev;
-        const nextBid = {
-          teamId,
-          teamName: teamName ?? "Team",
-          amount: Number(amount),
-          timestamp: optimisticAt,
-        };
-        const nextHistory = [...prev.bidHistory, nextBid].slice(-10);
-        const prevCounts = prev.bidCounts ?? {};
-        return {
-          ...prev,
-          currentBid: Number(amount),
-          currentTeamId: teamId,
-          currentTeamName: teamName,
-          bidHistory: nextHistory,
-          bidCounts: { ...prevCounts, [teamId]: (prevCounts[teamId] ?? 0) + 1 },
-        };
-      },
-      false
-    );
-
+  // ── Bid queue drain loop ──────────────────────────────────────────────────
+  // Fires bid POSTs one at a time in order. After each POST completes it
+  // immediately fires the next queued bid (if any). The queue only ever holds
+  // one pending bid — latest click wins, older pending entries are overwritten.
+  //
+  // All closures used here are refs or stable SWR/useState setters so they
+  // are never stale across async ticks, even while the component re-renders.
+  const drainBidQueue = async () => {
+    inflightBidRef.current = true;
     try {
-      const res = await fetch(`/api/auctions/${id}/state/bid`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId, amount }),
-      });
-      const data = await res.json();
+      while (queuedBidRef.current) {
+        const { teamId, amount, teamName } = queuedBidRef.current;
+        queuedBidRef.current = null;
 
-      if (!res.ok) {
-        // Server rejected — roll back optimistic update to confirmed DB state.
-        mutateState();
-        setError(data.error);
-      } else {
-        setPendingBid(null);
-        playTone(660, 80);
-
-        // Apply the confirmed server state directly from the response — no
-        // extra GET needed. The response includes bidEntry and bidCounts so
-        // we can update every relevant field accurately in one pass.
-        // We then tell the socket hook to skip the next bid:update echo so
-        // the admin doesn't suffer a redundant round-trip for their own bid.
-        suppressBidUpdateRef.current = true;
+        // Full optimistic: update currentBid, add history entry, increment count.
+        // Called right before the POST so the history entry is always added in
+        // the correct order (after the shallow-optimistic currentBid already set
+        // by handlePlaceBid for any previous in-flight bid).
+        const optimisticAt = new Date().toISOString();
         mutateState(
           (prev) => {
             if (!prev) return prev;
+            const nextBid = { teamId, teamName, amount, timestamp: optimisticAt };
+            const prevCounts = prev.bidCounts ?? {};
             return {
               ...prev,
-              currentBid: data.currentBid,
-              currentTeamId: data.currentTeamId,
-              currentTeamName: data.currentTeamName,
-              updatedAt: data.updatedAt,
-              bidHistory: [...prev.bidHistory.slice(0, -1), data.bidEntry].slice(-10),
-              bidCounts: data.bidCounts,
+              currentBid: amount,
+              currentTeamId: teamId,
+              currentTeamName: teamName,
+              bidHistory: [...prev.bidHistory, nextBid].slice(-10),
+              bidCounts: { ...prevCounts, [teamId]: (prevCounts[teamId] ?? 0) + 1 },
             };
           },
-          false // confirmed data — no revalidation GET
+          false
         );
+
+        setBidLoadingTeamId(teamId);
+        let succeeded = false;
+
+        try {
+          const res = await fetch(`/api/auctions/${id}/state/bid`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ teamId, amount }),
+          });
+          const data = await res.json();
+
+          if (!res.ok) {
+            // Server rejected — revert to confirmed DB state, abort remaining queue.
+            queuedBidRef.current = null;
+            mutateState();
+            setError(data.error);
+          } else {
+            succeeded = true;
+            setPendingBid(null);
+            playTone(660, 80);
+
+            // Apply confirmed server values directly from the response.
+            // When a queued bid is already showing its shallow optimistic as
+            // "current", preserve that display — only update history + counts
+            // so the queue's optimistic currentBid doesn't flicker back to the
+            // now-confirmed-but-stale value of the bid we just finished.
+            suppressBidUpdateRef.current = true;
+            const hasQueued = queuedBidRef.current !== null;
+            mutateState(
+              (prev) => {
+                if (!prev) return prev;
+                // Replace the last optimistic history entry with the confirmed one.
+                const confirmedHistory = [
+                  ...prev.bidHistory.slice(0, -1),
+                  data.bidEntry,
+                ].slice(-10);
+                if (hasQueued) {
+                  // A queued bid's shallow optimistic is already showing a newer
+                  // currentBid/teamId — don't roll it back to this bid's values.
+                  return { ...prev, bidHistory: confirmedHistory, bidCounts: data.bidCounts };
+                }
+                return {
+                  ...prev,
+                  currentBid: data.currentBid,
+                  currentTeamId: data.currentTeamId,
+                  currentTeamName: data.currentTeamName,
+                  updatedAt: data.updatedAt,
+                  bidHistory: confirmedHistory,
+                  bidCounts: data.bidCounts,
+                };
+              },
+              false
+            );
+          }
+        } catch {
+          // Network error — revert and abort queue.
+          queuedBidRef.current = null;
+          mutateState();
+          setError("Network error — bid may not have been placed");
+        } finally {
+          setBidLoadingTeamId(null);
+        }
+
+        if (!succeeded) break; // don't process queue after an error
       }
     } finally {
-      setBidLoadingTeamId(null);
+      inflightBidRef.current = false;
     }
+  };
+
+  // handlePlaceBid is synchronous — clicks are NEVER dropped.
+  // If a POST is in-flight: apply a shallow optimistic (instant UI feedback)
+  //   and queue the bid. The drain loop fires it the moment the POST completes.
+  // If nothing is in-flight: queue and start draining immediately.
+  const handlePlaceBid = (teamId: string, amount: number) => {
+    setError(null);
+    const teamName = teams?.find((t) => t._id === teamId)?.name ?? "Team";
+
+    if (inflightBidRef.current) {
+      // Shallow optimistic: instantly show the new team as leading + new bid
+      // amount. History/counts are NOT updated here — the drain loop applies
+      // the full optimistic (with history entry) right before the POST fires.
+      mutateState(
+        (prev) => {
+          if (!prev) return prev;
+          return { ...prev, currentBid: amount, currentTeamId: teamId, currentTeamName: teamName };
+        },
+        false
+      );
+      // Queue this bid (latest click wins).
+      queuedBidRef.current = { teamId, amount, teamName };
+      return;
+    }
+
+    // Nothing in-flight — queue and drain immediately.
+    queuedBidRef.current = { teamId, amount, teamName };
+    void drainBidQueue();
   };
 
   const handleComplete = async (action: "sold" | "unsold") => {
