@@ -95,7 +95,7 @@ export async function POST(
       const [auction, team, state] = await Promise.all([
         auctionsCol.findOne(
           { _id: auctionId },
-          { projection: { _id: 1, status: 1, minIncrement: 1, minBid: 1, maxPlayersPerTeam: 1 } }
+          { projection: { _id: 1, status: 1, minIncrement: 1, minBid: 1, maxPlayersPerTeam: 1, thresholdAmount: 1, thresholdIncrement: 1 } }
         ),
         teamsCol.findOne(
           { _id: teamObjectId, auctionId },

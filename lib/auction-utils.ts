@@ -23,35 +23,53 @@ export function calculateMaxBid(
 }
 
 /**
+ * Returns the effective bid increment for a given current bid level.
+ * Switches to thresholdIncrement once currentBid >= thresholdAmount (if both are set).
+ */
+export function effectiveIncrement(
+  currentBid: number,
+  auction: Pick<Auction, "minIncrement" | "thresholdAmount" | "thresholdIncrement">
+): number {
+  if (
+    auction.thresholdAmount !== undefined &&
+    auction.thresholdIncrement !== undefined &&
+    currentBid >= auction.thresholdAmount
+  ) {
+    return auction.thresholdIncrement;
+  }
+  return auction.minIncrement;
+}
+
+/**
  * Validate if a bid is allowed
  */
 export function validateBid(
   bidAmount: number,
   team: Pick<Team, "remainingBudget" | "playersBought">,
-  auction: Pick<Auction, "maxPlayersPerTeam" | "minBid" | "minIncrement">,
+  auction: Pick<Auction, "maxPlayersPerTeam" | "minBid" | "minIncrement" | "thresholdAmount" | "thresholdIncrement">,
   currentBid: number,
   opts?: { isFirstBid?: boolean }
 ): { valid: boolean; error?: string } {
   const maxBid = calculateMaxBid(team, auction);
   const remainingSlots = auction.maxPlayersPerTeam - team.playersBought.length;
   const isFirstBid = opts?.isFirstBid ?? false;
-  
+
   if (remainingSlots <= 0) {
     return { valid: false, error: "Team has reached maximum players limit" };
   }
-  
+
   if (bidAmount > team.remainingBudget) {
     return { valid: false, error: "Bid exceeds remaining budget" };
   }
-  
+
   if (bidAmount > maxBid) {
-    return { 
-      valid: false, 
-      error: `Bid exceeds maximum allowed (${maxBid}). Must reserve budget for remaining ${remainingSlots - 1} players.` 
+    return {
+      valid: false,
+      error: `Bid exceeds maximum allowed (${maxBid}). Must reserve budget for remaining ${remainingSlots - 1} players.`
     };
   }
-  
-  // First bid for a player can be the base price; subsequent bids must respect minIncrement.
+
+  // First bid for a player can be the base price; subsequent bids must respect effective increment.
   if (isFirstBid) {
     if (bidAmount < currentBid) {
       return {
@@ -59,13 +77,16 @@ export function validateBid(
         error: `First bid must be at least ${currentBid} (base price)`,
       };
     }
-  } else if (bidAmount < currentBid + auction.minIncrement) {
-    return { 
-      valid: false, 
-      error: `Bid must be at least ${currentBid + auction.minIncrement} (current bid + increment)` 
-    };
+  } else {
+    const incr = effectiveIncrement(currentBid, auction);
+    if (bidAmount < currentBid + incr) {
+      return {
+        valid: false,
+        error: `Bid must be at least ${currentBid + incr} (current bid + increment)`
+      };
+    }
   }
-  
+
   return { valid: true };
 }
 

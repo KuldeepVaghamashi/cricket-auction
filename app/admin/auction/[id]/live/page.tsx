@@ -30,6 +30,7 @@ import {
   Ban,
 } from "lucide-react";
 import type { AuctionWithId, TeamWithStats, PlayerWithId } from "@/lib/types";
+import { effectiveIncrement } from "@/lib/auction-utils";
 import { cn } from "@/lib/utils";
 import {
   ARENA_GLASS_CARD,
@@ -529,7 +530,9 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
     availableSorted,
   } = playerLists!;
   const serverCurrentBid = state.currentBid;
-  const increment = auction.minIncrement;
+  // Use the threshold-aware increment: switches to thresholdIncrement once
+  // the current bid is at or above thresholdAmount (if the auction has one set).
+  const increment = effectiveIncrement(serverCurrentBid, auction);
   const minLegalBid = state.currentTeamId ? serverCurrentBid + increment : serverCurrentBid;
   const currentBid = pendingBid ?? serverCurrentBid;
 

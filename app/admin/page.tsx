@@ -68,6 +68,8 @@ export default function AdminDashboard() {
     minIncrement: "2",
     minBid: "2",
     maxPlayersPerTeam: "11",
+    thresholdAmount: "",
+    thresholdIncrement: "",
   });
 
   const stats = useMemo(() => {
@@ -130,6 +132,8 @@ export default function AdminDashboard() {
           minIncrement: "2",
           minBid: "2",
           maxPlayersPerTeam: "11",
+          thresholdAmount: "",
+          thresholdIncrement: "",
         });
       }
     } finally {
@@ -325,6 +329,32 @@ export default function AdminDashboard() {
                       onChange={(e) => setFormData({ ...formData, minIncrement: e.target.value })}
                       min="1"
                       required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="thresholdAmount">Threshold Bid</Label>
+                    <Input
+                      id="thresholdAmount"
+                      type="number"
+                      value={formData.thresholdAmount}
+                      onChange={(e) => setFormData({ ...formData, thresholdAmount: e.target.value })}
+                      min="1"
+                      placeholder="e.g. 50 (optional)"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="thresholdIncrement">Increment After Threshold</Label>
+                    <Input
+                      id="thresholdIncrement"
+                      type="number"
+                      value={formData.thresholdIncrement}
+                      onChange={(e) => setFormData({ ...formData, thresholdIncrement: e.target.value })}
+                      min="1"
+                      placeholder="e.g. 5 (optional)"
                     />
                   </div>
                 </div>

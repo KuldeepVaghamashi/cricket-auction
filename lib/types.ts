@@ -8,6 +8,10 @@ export interface Auction {
   minIncrement: number;
   minBid: number;
   maxPlayersPerTeam: number;
+  /** Bid amount at or above which the increment switches to thresholdIncrement. */
+  thresholdAmount?: number;
+  /** Increment to use once the current bid is >= thresholdAmount. */
+  thresholdIncrement?: number;
   status: "draft" | "active" | "completed";
   createdAt: Date;
   updatedAt: Date;

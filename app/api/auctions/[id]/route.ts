@@ -75,6 +75,8 @@ export async function PUT(
     if (body.minBid) updateData.minBid = Number(body.minBid);
     if (body.maxPlayersPerTeam) updateData.maxPlayersPerTeam = Number(body.maxPlayersPerTeam);
     if (body.status) updateData.status = body.status;
+    if (body.thresholdAmount) updateData.thresholdAmount = Number(body.thresholdAmount);
+    if (body.thresholdIncrement) updateData.thresholdIncrement = Number(body.thresholdIncrement);
 
     const result = await db
       .collection<Auction>("auctions")

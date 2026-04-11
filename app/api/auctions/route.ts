@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, date, budget, minIncrement, minBid, maxPlayersPerTeam } = body;
+    const { name, date, budget, minIncrement, minBid, maxPlayersPerTeam, thresholdAmount, thresholdIncrement } = body;
 
     if (!name || !date || !budget || !minIncrement || !minBid || !maxPlayersPerTeam) {
       return NextResponse.json(
@@ -60,6 +60,12 @@ export async function POST(request: NextRequest) {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+
+    // Optional threshold fields — only store when both are provided and valid.
+    if (thresholdAmount && thresholdIncrement) {
+      auction.thresholdAmount = Number(thresholdAmount);
+      auction.thresholdIncrement = Number(thresholdIncrement);
+    }
 
     const result = await db.collection<Auction>("auctions").insertOne(auction);
 
