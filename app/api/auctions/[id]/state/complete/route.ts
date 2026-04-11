@@ -4,7 +4,7 @@ import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { AuctionState, Player, Team, Auction, AuctionLog } from "@/lib/types";
 import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
-import { invalidateCachedState } from "@/lib/auction-cache";
+import { invalidateCachedState, invalidateCachedTeam } from "@/lib/auction-cache";
 
 // POST mark player as sold or unsold
 export async function POST(
@@ -119,6 +119,10 @@ export async function POST(
           $addToSet: { playersBought: playerId },
         }
       );
+
+      // The winning team's remainingBudget and playersBought just changed —
+      // drop the cached team doc so the next bid reads fresh from MongoDB.
+      void invalidateCachedTeam(id, state.currentTeamId.toString());
 
       // Non-blocking log — same pattern as bid route; keeps response latency low.
       void db.collection<AuctionLog>("auctionLogs").insertOne({

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
+import { invalidateCachedAuction } from "@/lib/auction-cache";
 import type { Auction } from "@/lib/types";
 
 // GET single auction
@@ -89,6 +90,9 @@ export async function PUT(
     if (!result) {
       return NextResponse.json({ error: "Auction not found" }, { status: 404 });
     }
+
+    // Drop the per-auction Redis cache so the next bid reads fresh settings.
+    void invalidateCachedAuction(id);
 
     return NextResponse.json({
       ...result,

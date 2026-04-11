@@ -126,6 +126,98 @@ export async function invalidateCachedState(auctionId: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Auction Document Cache
+//
+// Auction settings (minIncrement, minBid, maxPlayersPerTeam, thresholdAmount,
+// thresholdIncrement, status) are static during active bidding. Caching the
+// auction doc eliminates one MongoDB read per bid — switching the critical
+// path from "3 parallel DB reads" to "1 DB read + 2 Redis reads".
+// TTL is 30 s so status changes propagate quickly.
+// Invalidated explicitly by PUT /api/auctions/[id] whenever settings change.
+// ---------------------------------------------------------------------------
+
+const AUCTION_DOC_CACHE_TTL_S = 30;
+const auctionDocKey = (auctionId: string) => `auction:doc:${auctionId}`;
+
+export async function getCachedAuction(auctionId: string): Promise<Record<string, unknown> | null> {
+  if (!REDIS_AVAILABLE) return null;
+  try {
+    const raw = await getRedis().get(auctionDocKey(auctionId));
+    return raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setCachedAuction(
+  auctionId: string,
+  auction: Record<string, unknown>
+): Promise<void> {
+  if (!REDIS_AVAILABLE) return;
+  try {
+    await getRedis().setex(auctionDocKey(auctionId), AUCTION_DOC_CACHE_TTL_S, JSON.stringify(auction));
+  } catch {
+    // Non-fatal.
+  }
+}
+
+export async function invalidateCachedAuction(auctionId: string): Promise<void> {
+  if (!REDIS_AVAILABLE) return;
+  try {
+    await getRedis().del(auctionDocKey(auctionId));
+  } catch {
+    // Non-fatal.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Team Document Cache (bid path)
+//
+// A team's remainingBudget and playersBought only change when a player is
+// sold (complete route). During active bidding on a player the team doc is
+// stable — caching it eliminates a second MongoDB read per bid.
+// TTL is 60 s. Invalidated by the complete route when action === "sold".
+// ---------------------------------------------------------------------------
+
+const TEAM_BID_CACHE_TTL_S = 60;
+const teamBidKey = (auctionId: string, teamId: string) => `team:bid:${auctionId}:${teamId}`;
+
+export async function getCachedTeam(
+  auctionId: string,
+  teamId: string
+): Promise<Record<string, unknown> | null> {
+  if (!REDIS_AVAILABLE) return null;
+  try {
+    const raw = await getRedis().get(teamBidKey(auctionId, teamId));
+    return raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setCachedTeam(
+  auctionId: string,
+  teamId: string,
+  team: Record<string, unknown>
+): Promise<void> {
+  if (!REDIS_AVAILABLE) return;
+  try {
+    await getRedis().setex(teamBidKey(auctionId, teamId), TEAM_BID_CACHE_TTL_S, JSON.stringify(team));
+  } catch {
+    // Non-fatal.
+  }
+}
+
+export async function invalidateCachedTeam(auctionId: string, teamId: string): Promise<void> {
+  if (!REDIS_AVAILABLE) return;
+  try {
+    await getRedis().del(teamBidKey(auctionId, teamId));
+  } catch {
+    // Non-fatal.
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Write-through helpers
 //
 // Keeping cache and DB in sync on every mutation means new clients always

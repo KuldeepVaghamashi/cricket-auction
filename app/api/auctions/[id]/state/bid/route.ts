@@ -5,7 +5,15 @@ import { isAuthenticated } from "@/lib/auth";
 import { validateBid } from "@/lib/auction-utils";
 import { pushAuctionInvalidation } from "@/lib/socket-hub";
 import { emitBidUpdate } from "@/lib/socket-io-server";
-import { acquireBidLock, releaseBidLock, invalidateCachedState } from "@/lib/auction-cache";
+import {
+  acquireBidLock,
+  releaseBidLock,
+  invalidateCachedState,
+  getCachedAuction,
+  setCachedAuction,
+  getCachedTeam,
+  setCachedTeam,
+} from "@/lib/auction-cache";
 import type { AuctionState, Team, Auction, AuctionLog } from "@/lib/types";
 
 /**
@@ -67,11 +75,31 @@ export async function POST(
     }
     bidThrottleMap.set(throttleKey, nowMs);
 
+    // ── Pre-warm: DB connection + Redis cache reads + lock in parallel ────────
+    // Auction and team docs are stable during active bidding — they only change
+    // on non-bid events (complete/pick/reset). Reading them from Redis cache
+    // before entering the lock means the critical section only needs ONE MongoDB
+    // read (state) instead of three. On cache miss the full DB fetch is used as
+    // fallback, and the result is cached for subsequent bids.
+    const db = await getDb();
+    const auctionId = new ObjectId(id);
+    const teamObjectId = new ObjectId(teamId);
+
+    const auctionsCol = db.collection<Auction>("auctions");
+    const teamsCol = db.collection<Team>("teams");
+    const statesCol = db.collection<AuctionState>("auctionStates");
+    const logsCol = db.collection<AuctionLog>("auctionLogs");
+
+    // Run lock acquisition and cache reads in parallel — lock is ~1–3 ms,
+    // cache reads are ~1–5 ms. This keeps pre-lock latency near zero while
+    // ensuring we hold the lock for as short a time as possible.
+    const [lockToken, cachedAuction, cachedTeam] = await Promise.all([
+      acquireBidLock(id),
+      getCachedAuction(id),
+      getCachedTeam(id, teamId),
+    ]);
+
     // ── Distributed auction-level lock ───────────────────────────────────────
-    // Serialises all bids for the same auction across every server instance.
-    // Prevents two simultaneous bids from both reading the same currentBid,
-    // both passing validation, and the second overwriting the first.
-    const lockToken = await acquireBidLock(id);
     if (!lockToken) {
       return NextResponse.json(
         { error: "Another bid is being processed, please try again" },
@@ -80,31 +108,30 @@ export async function POST(
     }
 
     try {
-      const db = await getDb();
-      const auctionId = new ObjectId(id);
-      const teamObjectId = new ObjectId(teamId);
+      // Inside the lock: resolve each read from cache when available, or fall
+      // back to MongoDB. State is always read fresh — it changes every bid and
+      // must be consistent with the write that follows inside this lock.
+      const auctionPromise: Promise<Auction | null> = cachedAuction
+        ? Promise.resolve(cachedAuction as unknown as Auction)
+        : auctionsCol.findOne(
+            { _id: auctionId },
+            { projection: { _id: 1, status: 1, minIncrement: 1, minBid: 1, maxPlayersPerTeam: 1, thresholdAmount: 1, thresholdIncrement: 1 } }
+          );
 
-      const auctionsCol = db.collection<Auction>("auctions");
-      const teamsCol = db.collection<Team>("teams");
-      const statesCol = db.collection<AuctionState>("auctionStates");
-      const logsCol = db.collection<AuctionLog>("auctionLogs");
+      const teamPromise: Promise<Team | null> = cachedTeam
+        ? Promise.resolve(cachedTeam as unknown as Team)
+        : teamsCol.findOne(
+            { _id: teamObjectId, auctionId },
+            { projection: { _id: 1, name: 1, remainingBudget: 1, playersBought: 1 } }
+          );
 
-      // Fetch auction, team, and state in parallel (minimal projections).
-      // Always read fresh from MongoDB inside the lock — cache is for reads
-      // outside the critical section.
       const [auction, team, state] = await Promise.all([
-        auctionsCol.findOne(
-          { _id: auctionId },
-          { projection: { _id: 1, status: 1, minIncrement: 1, minBid: 1, maxPlayersPerTeam: 1, thresholdAmount: 1, thresholdIncrement: 1 } }
-        ),
-        teamsCol.findOne(
-          { _id: teamObjectId, auctionId },
-          { projection: { _id: 1, name: 1, remainingBudget: 1, playersBought: 1 } }
-        ),
+        auctionPromise,
+        teamPromise,
         statesCol.findOne(
           { auctionId },
           {
-            // bidHistory is NOT needed for bid validation — omitting it makes
+            // bidHistory is NOT needed for bid validation — omitting it keeps
             // the read smaller and faster. bidCounts is needed so we can return
             // the updated counts in the response without an extra DB round-trip.
             projection: {
@@ -117,6 +144,10 @@ export async function POST(
           }
         ),
       ]);
+
+      // Warm cache on misses so subsequent bids skip the MongoDB round-trips.
+      if (!cachedAuction && auction) void setCachedAuction(id, auction as unknown as Record<string, unknown>);
+      if (!cachedTeam && team) void setCachedTeam(id, teamId, team as unknown as Record<string, unknown>);
 
       if (!auction) {
         return NextResponse.json({ error: "Auction not found" }, { status: 404 });
