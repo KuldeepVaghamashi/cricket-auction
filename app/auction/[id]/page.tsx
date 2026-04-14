@@ -122,6 +122,8 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
   /** Live viewer: which pool list to show above sold players */
   const [poolFilter, setPoolFilter] = useState<"available" | "unsold" | null>(null);
   const soldSectionRef = useRef<HTMLDivElement>(null);
+  const mainAuctionRef = useRef<HTMLDivElement>(null);
+  const streamInitializedRef = useRef(false);
   const [streamData, setStreamData] = useState<ViewerStreamPayload | null>(null);
   const [completionAnimation, setCompletionAnimation] = useState<{
     action: "sold" | "unsold";
@@ -188,6 +190,18 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     const t = window.setTimeout(() => setCompletionAnimation(null), 1600);
     return () => window.clearTimeout(t);
   }, [isActive, streamData?.state?.lastAction, streamData?.state?.lastActionAt]);
+
+  // Scroll the main auction block into view on bid updates and player changes.
+  // Skips the very first data arrival so page-load doesn't hijack the scroll position.
+  useEffect(() => {
+    if (!isActive || !streamData) return;
+    if (!streamInitializedRef.current) {
+      streamInitializedRef.current = true;
+      return;
+    }
+    mainAuctionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, streamData?.state?.currentBid, streamData?.currentPlayer?._id]);
 
   const [nowMs, setNowMs] = useState(Date.now());
 
@@ -620,7 +634,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
         </p>
         <div className={cn(ARENA_WORKSPACE_SHELL, "p-3 sm:p-4 lg:p-5")}>
           <div className="grid gap-6 lg:grid-cols-3 lg:gap-8">
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2" ref={mainAuctionRef}>
             <Card className={cn(VIEWER_SURFACE, "overflow-hidden")}>
               <CardHeader
                 className={cn(
