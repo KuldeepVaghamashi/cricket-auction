@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use, useCallback, useMemo, useRef } from "react";
+import { useState, use, useCallback, useMemo, useRef, useEffect } from "react";
 import useSWR from "swr";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -176,6 +176,22 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   // false/cleared) still revalidate normally, keeping multi-admin sync intact.
   const suppressBidUpdateRef = useRef(false);
   useAuctionSocket(id, mutatorsRef, setAuctionWsConnected, suppressBidUpdateRef);
+
+  // Ref for the logs ScrollArea wrapper — used to find the Radix viewport element.
+  const logsScrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll the logs to bottom only when the user is already near the bottom.
+  // This prevents disrupting an admin who has scrolled up to review earlier entries.
+  useEffect(() => {
+    const viewport = logsScrollRef.current?.querySelector<HTMLElement>(
+      "[data-slot='scroll-area-viewport']"
+    );
+    if (!viewport) return;
+    const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    if (distanceFromBottom < 80) {
+      viewport.scrollTop = viewport.scrollHeight;
+    }
+  }, [logs]);
 
   // ── Bid queue ──────────────────────────────────────────────────────────────
   // inflightBidRef: true while a bid POST is in-flight (ref, not state — no re-render needed)
@@ -1194,6 +1210,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                 <CardDescription className="text-xs">Audit trail</CardDescription>
               </CardHeader>
               <CardContent className="p-0">
+                <div ref={logsScrollRef}>
                 <ScrollArea className="h-[min(220px,32vh)] sm:h-[220px]">
                   <div className="flex flex-col gap-2 p-4">
                     {!logs ? (
@@ -1250,6 +1267,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                     )}
                   </div>
                 </ScrollArea>
+                </div>
               </CardContent>
             </Card>
 
