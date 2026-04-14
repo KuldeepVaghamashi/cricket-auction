@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
 import type { Player, Auction } from "@/lib/types";
+import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
 
 // GET all players for an auction
 export async function GET(
@@ -89,6 +90,11 @@ export async function POST(
     };
 
     const result = await db.collection<Player>("players").insertOne(player);
+
+    // Notify live clients so the new player appears in the pool immediately.
+    if (auction.status === "active") {
+      notifyAuctionSubscribers(id, ["pl"]);
+    }
 
     return NextResponse.json({
       ...player,

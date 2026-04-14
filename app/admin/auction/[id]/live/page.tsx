@@ -28,6 +28,7 @@ import {
   Wallet,
   Trophy,
   Ban,
+  Trash2,
 } from "lucide-react";
 import type { AuctionWithId, TeamWithStats, PlayerWithId } from "@/lib/types";
 import { effectiveIncrement } from "@/lib/auction-utils";
@@ -52,6 +53,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -190,6 +193,12 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   const [undoLoading, setUndoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingBid, setPendingBid] = useState<number | null>(null);
+  const [revertingPlayerId, setRevertingPlayerId] = useState<string | null>(null);
+  const [removingPlayerId, setRemovingPlayerId] = useState<string | null>(null);
+  const [addPlayerOpen, setAddPlayerOpen] = useState(false);
+  const [addPlayerName, setAddPlayerName] = useState("");
+  const [addPlayerPrice, setAddPlayerPrice] = useState("");
+  const [addPlayerLoading, setAddPlayerLoading] = useState(false);
 
   const refreshAll = useCallback(() => {
     mutateTeams();
@@ -500,6 +509,80 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
       }
     } finally {
       setUndoLoading(false);
+    }
+  };
+
+  // ── Revert sold/unsold player back to available ────────────────────────────
+  const handleRevertPlayer = async (playerId: string) => {
+    setRevertingPlayerId(playerId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/auctions/${id}/players/${playerId}/revert`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to revert player");
+      } else {
+        mutatePlayers();
+        mutateTeams();
+        mutateLogs();
+      }
+    } finally {
+      setRevertingPlayerId(null);
+    }
+  };
+
+  // ── Remove a player from the auction pool during live ──────────────────────
+  const handleRemovePlayer = async (playerId: string, playerName: string) => {
+    const isCurrentPlayer = state?.currentPlayer?._id === playerId;
+    const msg = isCurrentPlayer
+      ? `${playerName} is currently being auctioned. Remove them and clear the bidding session?`
+      : `Remove ${playerName} from the auction pool?`;
+    if (!confirm(msg)) return;
+    setRemovingPlayerId(playerId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/auctions/${id}/players/${playerId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to remove player");
+      } else {
+        refreshAll();
+      }
+    } finally {
+      setRemovingPlayerId(null);
+    }
+  };
+
+  // ── Add a new player to the available pool during live ─────────────────────
+  const handleAddLivePlayer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddPlayerLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/auctions/${id}/players`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: addPlayerName.trim(),
+          ...(addPlayerPrice ? { basePrice: Number(addPlayerPrice) } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to add player");
+      } else {
+        mutatePlayers();
+        setAddPlayerOpen(false);
+        setAddPlayerName("");
+        setAddPlayerPrice("");
+        setPoolDialog("available");
+      }
+    } finally {
+      setAddPlayerLoading(false);
     }
   };
 
@@ -1211,29 +1294,49 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
         <Dialog open={poolDialog !== null} onOpenChange={(open) => !open && setPoolDialog(null)}>
           <DialogContent className={cn(ARENA_DIALOG_SURFACE, "max-h-[85vh] max-w-2xl gap-0 p-0")}>
             <DialogHeader className="border-b border-white/[0.08] px-6 py-4 text-left">
-              <DialogTitle className="font-head-arena text-xl tracking-tight">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <DialogTitle className="font-head-arena text-xl tracking-tight">
+                    {poolDialog === "available" && (
+                      <>
+                        Available <span className={ARENA_GRADIENT_TEXT}>players</span>
+                      </>
+                    )}
+                    {poolDialog === "sold" && (
+                      <>
+                        Sold <span className={ARENA_GRADIENT_TEXT}>players</span>
+                      </>
+                    )}
+                    {poolDialog === "unsold" && (
+                      <>
+                        Unsold <span className="text-unsold">players</span>
+                      </>
+                    )}
+                  </DialogTitle>
+                  <DialogDescription className="mt-1 text-sm leading-relaxed">
+                    {poolDialog === "available" &&
+                      "Everyone still in the pool (same view as the public viewer)."}
+                    {poolDialog === "sold" && "Sales recorded so far — team and points."}
+                    {poolDialog === "unsold" && "Players passed without a sale in this auction."}
+                  </DialogDescription>
+                </div>
                 {poolDialog === "available" && (
-                  <>
-                    Available <span className={ARENA_GRADIENT_TEXT}>players</span>
-                  </>
+                  <Button
+                    size="sm"
+                    className={cn(
+                      "shrink-0 gap-1.5 font-head-arena text-[11px] font-bold uppercase tracking-wider",
+                      ARENA_BTN_CYAN
+                    )}
+                    onClick={() => {
+                      setPoolDialog(null);
+                      setAddPlayerOpen(true);
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add player
+                  </Button>
                 )}
-                {poolDialog === "sold" && (
-                  <>
-                    Sold <span className={ARENA_GRADIENT_TEXT}>players</span>
-                  </>
-                )}
-                {poolDialog === "unsold" && (
-                  <>
-                    Unsold <span className="text-unsold">players</span>
-                  </>
-                )}
-              </DialogTitle>
-              <DialogDescription className="text-sm leading-relaxed">
-                {poolDialog === "available" &&
-                  "Everyone still in the pool (same view as the public viewer)."}
-                {poolDialog === "sold" && "Sales recorded so far — team and points."}
-                {poolDialog === "unsold" && "Players passed without a sale in this auction."}
-              </DialogDescription>
+              </div>
             </DialogHeader>
             <ScrollArea className="max-h-[min(60vh,520px)] px-4 py-4">
               {poolDialog === "available" && (
@@ -1253,6 +1356,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                           <TableHead className="font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                             Status
                           </TableHead>
+                          <TableHead className="w-10" />
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1279,6 +1383,18 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                                   <span className="text-xs text-muted-foreground">—</span>
                                 )}
                               </TableCell>
+                              <TableCell className="px-2 py-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Remove from pool"
+                                  className="h-7 w-7 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+                                  disabled={removingPlayerId === p._id}
+                                  onClick={() => handleRemovePlayer(p._id, p.name)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </TableCell>
                             </TableRow>
                           );
                         })}
@@ -1304,6 +1420,9 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                           <TableHead className="text-right font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                             Pts
                           </TableHead>
+                          <TableHead className="w-20 font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Action
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1315,6 +1434,19 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                             </TableCell>
                             <TableCell className="px-4 py-3 text-right font-mono font-semibold tabular-nums text-sold">
                               {typeof p.soldPrice === "number" ? p.soldPrice : "—"}
+                            </TableCell>
+                            <TableCell className="px-2 py-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title="Revert to available (refunds team)"
+                                className="h-7 gap-1 text-[11px] text-muted-foreground hover:bg-primary/10 hover:text-arena-cyan"
+                                disabled={revertingPlayerId === p._id}
+                                onClick={() => handleRevertPlayer(p._id)}
+                              >
+                                <RotateCcw className="h-3 w-3" />
+                                {revertingPlayerId === p._id ? "…" : "Revert"}
+                              </Button>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1337,6 +1469,9 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                           <TableHead className="text-right font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                             Base
                           </TableHead>
+                          <TableHead className="w-20 font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Action
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1345,6 +1480,19 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                             <TableCell className="px-4 py-3 font-medium">{p.name}</TableCell>
                             <TableCell className="px-4 py-3 text-right font-mono tabular-nums text-muted-foreground">
                               {p.basePrice}
+                            </TableCell>
+                            <TableCell className="px-2 py-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title="Revert to available"
+                                className="h-7 gap-1 text-[11px] text-muted-foreground hover:bg-primary/10 hover:text-arena-cyan"
+                                disabled={revertingPlayerId === p._id}
+                                onClick={() => handleRevertPlayer(p._id)}
+                              >
+                                <RotateCcw className="h-3 w-3" />
+                                {revertingPlayerId === p._id ? "…" : "Revert"}
+                              </Button>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1359,6 +1507,76 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                 Close
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── Add player during live ───────────────────────────────────────── */}
+        <Dialog
+          open={addPlayerOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setAddPlayerOpen(false);
+              setAddPlayerName("");
+              setAddPlayerPrice("");
+              setPoolDialog("available");
+            }
+          }}
+        >
+          <DialogContent className={cn(ARENA_DIALOG_SURFACE, "max-w-sm gap-0 p-0")}>
+            <DialogHeader className="border-b border-white/[0.08] px-6 py-4 text-left">
+              <DialogTitle className="font-head-arena text-xl tracking-tight">
+                Add <span className={ARENA_GRADIENT_TEXT}>player</span>
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-sm leading-relaxed">
+                Player will appear in the available pool immediately.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleAddLivePlayer} className="flex flex-col gap-4 px-6 py-5">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="live-add-name">Name</Label>
+                <Input
+                  id="live-add-name"
+                  value={addPlayerName}
+                  onChange={(e) => setAddPlayerName(e.target.value)}
+                  placeholder="Player name"
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="live-add-price">Base price</Label>
+                <Input
+                  id="live-add-price"
+                  type="number"
+                  value={addPlayerPrice}
+                  onChange={(e) => setAddPlayerPrice(e.target.value)}
+                  placeholder={`Default: ${auction.minBid} pts`}
+                  min="1"
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button
+                  type="submit"
+                  disabled={addPlayerLoading}
+                  className={cn("flex-1", ARENA_BTN_CYAN)}
+                >
+                  {addPlayerLoading ? "Adding…" : "Add to pool"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={ARENA_BTN_OUTLINE}
+                  onClick={() => {
+                    setAddPlayerOpen(false);
+                    setAddPlayerName("");
+                    setAddPlayerPrice("");
+                    setPoolDialog("available");
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
           </DialogContent>
         </Dialog>
       </div>

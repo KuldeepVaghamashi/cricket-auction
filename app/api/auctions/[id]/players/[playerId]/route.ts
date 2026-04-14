@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { isAuthenticated } from "@/lib/auth";
-import type { Auction, Player, Team } from "@/lib/types";
+import type { Auction, AuctionState, Player, Team } from "@/lib/types";
 import {
   normalizePhoneDigits,
   isValidRegisterPhone,
   sanitizePlayerRegisterName,
 } from "@/lib/player-register";
+import { notifyAuctionSubscribers } from "@/lib/notify-auction-subscribers";
+import { invalidateCachedState, invalidateCachedTeam } from "@/lib/auction-cache";
 
 /** Update pool player (name, phone, base price) while auction is draft — any source. */
 export async function PUT(
@@ -143,36 +145,72 @@ export async function DELETE(
     }
 
     const { id, playerId } = await params;
-    
+
     if (!ObjectId.isValid(id) || !ObjectId.isValid(playerId)) {
       return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
     }
 
     const db = await getDb();
+    const auctionId = new ObjectId(id);
     const playerObjectId = new ObjectId(playerId);
 
-    // Get player to check if sold
+    // Filter by auctionId to prevent cross-auction deletion.
     const player = await db
       .collection<Player>("players")
-      .findOne({ _id: playerObjectId });
+      .findOne({ _id: playerObjectId, auctionId });
 
     if (!player) {
       return NextResponse.json({ error: "Player not found" }, { status: 404 });
     }
 
-    // If player was sold, refund the team
-    if (player.soldTo && player.soldPrice) {
+    const wasSold = !!(player.soldTo && player.soldPrice !== undefined);
+
+    // Refund the team if the player was sold.
+    if (wasSold && player.soldTo) {
       await db.collection<Team>("teams").updateOne(
         { _id: player.soldTo },
         {
-          $inc: { remainingBudget: player.soldPrice },
-          $pull: { playersBought: playerObjectId },
+          $inc: { remainingBudget: player.soldPrice! },
+          $pull: { playersBought: playerObjectId } as any,
         }
       );
+      void invalidateCachedTeam(id, player.soldTo.toString());
     }
 
-    // Delete player
+    // Delete the player document.
     await db.collection<Player>("players").deleteOne({ _id: playerObjectId });
+
+    // If this player was currently being auctioned, clear the auction state
+    // so the admin is not left with an orphaned "on block" session.
+    let stateWasReset = false;
+    const liveState = await db
+      .collection<AuctionState>("auctionStates")
+      .findOne({ auctionId, currentPlayerId: playerObjectId }, { projection: { _id: 1 } });
+
+    if (liveState) {
+      stateWasReset = true;
+      await db.collection<AuctionState>("auctionStates").updateOne(
+        { auctionId },
+        {
+          $set: {
+            currentPlayerId: null,
+            currentBid: 0,
+            currentTeamId: null,
+            currentTeamName: null,
+            bidHistory: [],
+            bidCounts: {},
+            updatedAt: new Date(),
+          },
+        }
+      );
+      await invalidateCachedState(id);
+    }
+
+    // Notify all connected clients of what changed.
+    const scopes: ("st" | "tm" | "pl" | "lg")[] = ["pl", "lg"];
+    if (stateWasReset) scopes.unshift("st");
+    if (wasSold) scopes.push("tm");
+    notifyAuctionSubscribers(id, scopes);
 
     return NextResponse.json({ success: true });
   } catch (error) {
