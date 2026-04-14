@@ -130,6 +130,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     at: string;
   } | null>(null);
   const lastCompletionAtRef = useRef<string | null>(null);
+  const lastTapRef = useRef<number>(0);
 
   const {
     data: auctionMeta,
@@ -190,6 +191,45 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     const t = window.setTimeout(() => setCompletionAnimation(null), 1600);
     return () => window.clearTimeout(t);
   }, [isActive, streamData?.state?.lastAction, streamData?.state?.lastActionAt]);
+
+  // Double-tap (mobile) + Home key (keyboard) → scroll to main auction section.
+  // Only active during a live auction. Interactive elements (buttons, links, inputs)
+  // are excluded so normal taps still work. Home key is ignored inside form controls.
+  useEffect(() => {
+    if (!isActive) return;
+
+    const scrollToAuction = () => {
+      mainAuctionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      const now = Date.now();
+      const delta = now - lastTapRef.current;
+      lastTapRef.current = now;
+      if (delta > 0 && delta < 300) {
+        const target = e.target as Element | null;
+        // Leave interactive elements alone so taps on buttons/links still fire normally.
+        if (target?.closest('a, button, input, select, textarea, [role="button"]')) return;
+        e.preventDefault(); // prevent double-tap browser zoom
+        scrollToAuction();
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Home") return;
+      const tag = (e.target as Element)?.tagName ?? "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      e.preventDefault(); // replace default scroll-to-top with scroll-to-main-section
+      scrollToAuction();
+    };
+
+    document.addEventListener("touchend", handleTouchEnd);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("touchend", handleTouchEnd);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isActive]);
 
   // Scroll the main auction block into view on bid updates and player changes.
   // Skips the very first data arrival so page-load doesn't hijack the scroll position.
@@ -655,7 +695,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                   Name, base price, and current high bid update as the auctioneer runs the room.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="relative overflow-hidden p-5 sm:p-8 [background:radial-gradient(ellipse_90%_60%_at_50%_-20%,oklch(0.76_0.13_211/0.07),transparent)]">
+              <CardContent className="relative overflow-hidden p-5 sm:p-8 [background:radial-gradient(ellipse_90%_60%_at_50%_-20%,oklch(0.76_0.13_211/0.07),transparent)] min-h-[300px] [contain:layout]">
                 {completionAnimation && (
                   <div
                     className={cn(
@@ -700,7 +740,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
 
                     <div
                       className={cn(
-                        "mt-8 rounded-2xl border p-6 transition-all duration-300 sm:p-10",
+                        "mt-8 rounded-2xl border p-6 transition-all duration-300 sm:p-10 [contain:layout]",
                         stateLite?.currentTeamId
                           ? "arena-glow-bid border-primary/35 bg-gradient-to-b from-primary/15 to-primary/5"
                           : "border-white/[0.08] bg-black/25 shadow-inner"

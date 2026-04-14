@@ -804,7 +804,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                   Current player on the block — adjust bid, undo, mark sold or skip.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="px-6 pb-6 pt-0 sm:px-8 sm:pb-8">
+              <CardContent className="px-6 pb-6 pt-0 sm:px-8 sm:pb-8 min-h-[260px] [contain:layout]">
                 {state.currentPlayer ? (
                   <div className="text-center">
                     <h2 className="mb-2 font-head-arena text-3xl font-extrabold uppercase italic tracking-tight text-foreground lg:text-4xl">
@@ -820,7 +820,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                     {/* Current Bid Display */}
                     <div
                       className={cn(
-                        "mt-6 rounded-2xl border p-6 transition-[box-shadow,background-color] duration-300 sm:p-8",
+                        "mt-6 rounded-2xl border p-6 transition-[box-shadow,background-color] duration-300 sm:p-8 [contain:layout]",
                         state.currentTeamId
                           ? "arena-glow-bid border-primary/35 bg-gradient-to-b from-primary/15 to-primary/5"
                           : "border-white/[0.08] bg-black/25 shadow-inner"
@@ -999,7 +999,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
                           disabled={isDisabled}
                           onClick={() => handlePlaceBid(team._id, bidAmount)}
                           className={cn(
-                            "relative rounded-2xl border p-4 text-left transition-all duration-200",
+                            "relative rounded-2xl border p-4 text-left transition-all duration-200 [contain:layout]",
                             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                             "border-border/80 bg-gradient-to-b from-secondary/95 to-card text-foreground shadow-sm",
                             !isDisabled && "hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md hover:shadow-primary/10",
