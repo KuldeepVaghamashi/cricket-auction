@@ -638,7 +638,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ id: stri
   return (
     <div className="min-h-0 px-4 py-6 sm:px-6 lg:py-8">
       <div className="mx-auto max-w-[1800px]">
-        <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+        <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6 sticky top-0 z-50">
           <Link href={`/admin/auction/${id}`} className="shrink-0 pt-1">
             <Button
               variant="ghost"
