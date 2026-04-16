@@ -268,7 +268,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
       <>
         <Badge
           variant="outline"
-          className="hidden border-white/12 bg-black/30 font-mono text-[10px] font-semibold tabular-nums text-muted-foreground sm:inline-flex"
+          className="border-white/12 bg-black/30 font-mono text-[10px] font-semibold tabular-nums text-muted-foreground"
         >
           +{streamData?.auction?.minIncrement} pts / raise
         </Badge>
@@ -610,23 +610,6 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
       />
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-3 py-4 sm:px-6 sm:py-8">
-        {/* Live ticker bar */}
-        <div className="mb-4 flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-black/30 px-4 py-3 backdrop-blur-sm sm:mb-5 sm:px-5">
-          <span className="relative flex h-2.5 w-2.5 shrink-0">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-arena-cyan opacity-60" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-arena-cyan" />
-          </span>
-          <p className="font-head-arena text-xs font-bold uppercase tracking-wider text-arena-cyan shrink-0">
-            Live
-          </p>
-          <div className="mx-2 h-3.5 w-px bg-white/10 shrink-0" />
-          <p className="min-w-0 truncate text-xs text-muted-foreground">
-            <span className="text-foreground/80">{auctionMeta.name}</span>
-            <span className="mx-1.5 text-muted-foreground/40">·</span>
-            <span>+<span className="font-mono font-semibold text-foreground">{streamData.auction.minIncrement}</span> pts per raise</span>
-          </p>
-        </div>
-
         <div className="grid gap-4 lg:grid-cols-3 lg:gap-6">
 
           {/* ── Left / main column ── */}
@@ -1128,9 +1111,12 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                           <span className="font-mono font-bold text-arena-cyan tabular-nums">{team.remainingBudget}</span>
                           <span className="text-muted-foreground/60 text-[9px]">/{team.totalBudget} pts</span>
                         </div>
-                        <div className="mt-1 flex items-center justify-between text-[10px] text-muted-foreground/70">
-                          <span className="tabular-nums">{team.playersCount}/{auctionMeta.maxPlayersPerTeam} players</span>
-                          <span className="font-mono text-arena-magenta">{team.maxBid}</span>
+                        <div className="mt-1.5 flex items-center justify-between text-[10px]">
+                          <span className="tabular-nums text-muted-foreground/70">{team.playersCount}/{auctionMeta.maxPlayersPerTeam} players</span>
+                          <span className="flex items-baseline gap-1">
+                            <span className="text-muted-foreground/60">Max</span>
+                            <span className="font-mono font-bold text-arena-magenta tabular-nums">{team.maxBid}</span>
+                          </span>
                         </div>
                       </div>
                     );
