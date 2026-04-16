@@ -184,7 +184,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
     if (action !== "sold" && action !== "unsold") return;
 
     setCompletionAnimation({ action, at });
-    const t = window.setTimeout(() => setCompletionAnimation(null), 1600);
+    const t = window.setTimeout(() => setCompletionAnimation(null), 2400);
     return () => window.clearTimeout(t);
   }, [isActive, streamData?.state?.lastAction, streamData?.state?.lastActionAt]);
 
@@ -643,33 +643,103 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
 
               {/* body */}
               <div className="relative px-4 py-6 sm:px-8 sm:py-10">
-                {/* SOLD / UNSOLD overlay */}
+                {/* ── SOLD / UNSOLD full-overlay animation ── */}
                 {completionAnimation && (
-                  <div
-                    className={cn(
-                      "absolute inset-0 z-10 flex items-center justify-center px-4 text-center backdrop-blur-[3px] pointer-events-none",
+                  <div className="absolute inset-0 z-10 flex items-center justify-center overflow-hidden pointer-events-none">
+
+                    {/* Animated background */}
+                    <div
+                      className={cn(
+                        "absolute inset-0 animate-completion-bg",
+                        completionAnimation.action === "sold"
+                          ? "bg-gradient-to-b from-sold/40 via-sold/20 to-sold/5"
+                          : "bg-gradient-to-b from-unsold/35 via-unsold/15 to-unsold/5"
+                      )}
+                    />
+                    {/* Backdrop blur layer */}
+                    <div className="absolute inset-0 backdrop-blur-[3px]" />
+
+                    {/* Top & bottom edge glow lines */}
+                    <div className={cn(
+                      "absolute inset-x-0 top-0 h-px",
                       completionAnimation.action === "sold"
-                        ? "bg-sold/25 ring-1 ring-sold/40"
-                        : "bg-unsold/25 ring-1 ring-unsold/35"
-                    )}
-                  >
-                    <div className="flex flex-col items-center gap-2">
+                        ? "bg-gradient-to-r from-transparent via-sold/80 to-transparent"
+                        : "bg-gradient-to-r from-transparent via-unsold/70 to-transparent"
+                    )} />
+                    <div className={cn(
+                      "absolute inset-x-0 bottom-0 h-px",
+                      completionAnimation.action === "sold"
+                        ? "bg-gradient-to-r from-transparent via-sold/40 to-transparent"
+                        : "bg-gradient-to-r from-transparent via-unsold/35 to-transparent"
+                    )} />
+
+                    {/* Expanding rings */}
+                    <div className={cn(
+                      "absolute h-32 w-32 rounded-full border-2 animate-ring-out sm:h-44 sm:w-44",
+                      completionAnimation.action === "sold"
+                        ? "border-sold/60"
+                        : "border-unsold/55"
+                    )} />
+                    <div
+                      className={cn(
+                        "absolute h-32 w-32 rounded-full border animate-ring-out-lg sm:h-44 sm:w-44",
+                        completionAnimation.action === "sold"
+                          ? "border-sold/35"
+                          : "border-unsold/30"
+                      )}
+                      style={{ animationDelay: "180ms" }}
+                    />
+
+                    {/* Content */}
+                    <div className="relative flex flex-col items-center gap-3 px-5 text-center sm:gap-4">
+                      {/* Icon badge */}
                       <div
-                        className={
+                        className={cn(
+                          "flex h-12 w-12 items-center justify-center rounded-full border-2 animate-fade-up-in sm:h-14 sm:w-14",
                           completionAnimation.action === "sold"
-                            ? "text-sold font-bold text-5xl sm:text-6xl animate-pulse"
-                            : "text-unsold font-bold text-5xl sm:text-6xl animate-bounce"
-                        }
+                            ? "border-sold/60 bg-sold/20 text-sold"
+                            : "border-unsold/55 bg-unsold/15 text-unsold"
+                        )}
+                        style={{ animationDelay: "0ms" }}
                       >
-                        {completionAnimation.action === "sold" ? "SOLD" : "UNSOLD"}
+                        {completionAnimation.action === "sold"
+                          ? <Trophy className="h-6 w-6 sm:h-7 sm:w-7" strokeWidth={2} />
+                          : <Ban className="h-6 w-6 sm:h-7 sm:w-7" strokeWidth={2} />
+                        }
                       </div>
-                      <div className="text-sm sm:text-base text-muted-foreground animate-pulse">
-                        {streamData?.state?.lastActionPlayerName
-                          ? streamData.state.lastActionPlayerName
-                          : "Player"}
-                        {completionAnimation.action === "sold" && typeof streamData?.state?.lastActionPrice === "number"
-                          ? ` • ${streamData.state.lastActionPrice} pts`
-                          : ""}
+
+                      {/* SOLD / UNSOLD slam text */}
+                      <p
+                        className={cn(
+                          "font-head-arena font-black leading-none tracking-tighter animate-slam-in",
+                          completionAnimation.action === "sold"
+                            ? "text-sold text-[3.5rem] sm:text-8xl [filter:drop-shadow(0_0_24px_oklch(0.72_0.13_165/0.7))]"
+                            : "text-unsold text-[3rem] sm:text-7xl [filter:drop-shadow(0_0_20px_oklch(0.78_0.12_58/0.6))]"
+                        )}
+                      >
+                        {completionAnimation.action === "sold" ? "SOLD!" : "UNSOLD"}
+                      </p>
+
+                      {/* Player name + price card */}
+                      <div
+                        className={cn(
+                          "animate-fade-up-in rounded-2xl border px-4 py-2.5 sm:px-6 sm:py-3",
+                          completionAnimation.action === "sold"
+                            ? "border-sold/40 bg-sold/15"
+                            : "border-unsold/35 bg-unsold/12"
+                        )}
+                        style={{ animationDelay: "300ms" }}
+                      >
+                        <p className="font-head-arena text-sm font-bold text-foreground sm:text-base">
+                          {streamData?.state?.lastActionPlayerName ?? "Player"}
+                        </p>
+                        {completionAnimation.action === "sold" &&
+                          typeof streamData?.state?.lastActionPrice === "number" && (
+                            <p className="mt-0.5 font-head-arena text-xl font-extrabold tabular-nums text-sold sm:text-2xl">
+                              {streamData.state.lastActionPrice}{" "}
+                              <span className="text-sm font-semibold text-sold/70">pts</span>
+                            </p>
+                          )}
                       </div>
                     </div>
                   </div>

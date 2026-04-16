@@ -258,3 +258,34 @@
 .transition-glow {
   transition: box-shadow 0.3s ease-in-out;
 }
+
+/* ── Viewer completion (sold / unsold) animations ── */
+@keyframes slam-in {
+  0%   { transform: scale(2.4) translateY(-6px); opacity: 0; filter: blur(12px); }
+  30%  { transform: scale(0.92) translateY(0);   opacity: 1; filter: blur(0);    }
+  50%  { transform: scale(1.06); }
+  68%  { transform: scale(0.97); }
+  84%  { transform: scale(1.02); }
+  100% { transform: scale(1);    opacity: 1; }
+}
+
+@keyframes ring-out {
+  0%   { transform: scale(0.3); opacity: 0.9; }
+  100% { transform: scale(3.2); opacity: 0;   }
+}
+
+@keyframes fade-up-in {
+  from { transform: translateY(14px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes completion-bg-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.animate-slam-in      { animation: slam-in      0.55s cubic-bezier(0.34, 1.45, 0.64, 1) forwards; }
+.animate-ring-out     { animation: ring-out     1.1s  ease-out                           forwards; }
+.animate-ring-out-lg  { animation: ring-out     1.3s  ease-out                           forwards; }
+.animate-fade-up-in   { animation: fade-up-in   0.38s ease-out                    0.22s  both;     }
+.animate-completion-bg { animation: completion-bg-in 0.2s ease-out               forwards;         }
