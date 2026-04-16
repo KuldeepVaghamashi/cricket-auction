@@ -44,7 +44,6 @@ import {
   ARENA_GRADIENT_TEXT,
   ARENA_TABLE_FRAME,
   ARENA_DIALOG_SURFACE,
-  ARENA_WORKSPACE_SHELL,
   ARENA_MANAGE_HERO,
   ARENA_BTN_OUTLINE,
 } from "@/components/arena/arena-classes";
@@ -611,37 +610,60 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
       />
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
-        <p className="mb-4 max-w-3xl text-sm leading-relaxed text-muted-foreground sm:mb-5">
-          Follow the player on the block, live high bid, and every team&apos;s purse — no refresh needed.
-          <span className="mt-1 block text-xs text-muted-foreground/90 sm:hidden">
-            Raises go up by <span className="font-mono font-semibold text-foreground">{streamData.auction.minIncrement}</span>{" "}
-            pts at a time.
-          </span>
-        </p>
-        <div className={cn(ARENA_WORKSPACE_SHELL, "p-3 sm:p-4 lg:p-5")}>
-          <div className="grid gap-6 lg:grid-cols-3 lg:gap-8">
-          <div className="lg:col-span-2">
-            <Card className={cn(VIEWER_SURFACE, "overflow-hidden")}>
-              <CardHeader
-                className={cn(
-                  ARENA_CARD_HEADER,
-                  "relative border-b border-white/[0.06] px-5 py-4 sm:px-6 sm:py-5"
-                )}
-              >
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
-                <CardTitle className="flex items-center gap-3 font-head-arena text-base tracking-tight sm:text-lg">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary/30 bg-primary/12 text-arena-cyan shadow-inner ring-1 ring-primary/10">
-                    <User className="h-5 w-5" strokeWidth={1.75} />
-                  </span>
-                  <span>
+        {/* Live ticker bar */}
+        <div className="mb-5 flex items-center justify-between gap-4 rounded-2xl border border-white/[0.06] bg-black/30 px-4 py-2.5 backdrop-blur-sm sm:px-5">
+          <div className="flex items-center gap-2.5">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-arena-cyan opacity-60" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-arena-cyan" />
+            </span>
+            <p className="font-head-arena text-xs font-semibold uppercase tracking-wider text-arena-cyan">
+              Live auction
+            </p>
+          </div>
+          <p className="text-xs text-muted-foreground/80 sm:hidden">
+            +<span className="font-mono font-semibold text-foreground">{streamData.auction.minIncrement}</span> pts / raise
+          </p>
+          <p className="hidden text-xs leading-relaxed text-muted-foreground sm:block">
+            Follow the player on the block and every team&apos;s purse — no refresh needed. Raises go up by{" "}
+            <span className="font-mono font-semibold text-foreground">{streamData.auction.minIncrement}</span> pts at a time.
+          </p>
+        </div>
+
+        <div className="grid gap-5 lg:grid-cols-3 lg:gap-6">
+
+          {/* ── Left / main column ── */}
+          <div className="flex flex-col gap-5 lg:col-span-2">
+
+            {/* ── ON THE BLOCK — hero spotlight ── */}
+            <div className={cn(
+              "relative overflow-hidden rounded-2xl border border-white/[0.09]",
+              "bg-[color-mix(in_oklab,var(--card)_84%,transparent)]",
+              "shadow-[0_32px_80px_-24px_rgba(0,0,0,0.65)] ring-1 ring-white/[0.04]",
+              "backdrop-blur-md"
+            )}>
+              {/* ambient glow */}
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,oklch(0.76_0.13_211/0.09),transparent)]" />
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+
+              {/* header */}
+              <div className={cn(ARENA_CARD_HEADER, "relative flex items-center gap-3 border-b border-white/[0.06] px-5 py-4 sm:px-6")}>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/30 bg-primary/12 text-arena-cyan ring-1 ring-primary/10">
+                  <User className="h-4.5 w-4.5" strokeWidth={1.75} />
+                </span>
+                <div className="min-w-0">
+                  <p className="font-head-arena text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                    Now up for bid
+                  </p>
+                  <h2 className="font-head-arena text-base font-extrabold tracking-tight text-foreground sm:text-lg">
                     On the <span className={ARENA_GRADIENT_TEXT}>block</span>
-                  </span>
-                </CardTitle>
-                <CardDescription className="mt-1 text-sm leading-relaxed">
-                  Name, base price, and current high bid update as the auctioneer runs the room.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="relative overflow-hidden p-5 sm:p-8 [background:radial-gradient(ellipse_90%_60%_at_50%_-20%,oklch(0.76_0.13_211/0.07),transparent)]">
+                  </h2>
+                </div>
+              </div>
+
+              {/* body */}
+              <div className="relative px-5 py-7 sm:px-8 sm:py-10">
+                {/* SOLD / UNSOLD overlay */}
                 {completionAnimation && (
                   <div
                     className={cn(
@@ -655,8 +677,8 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                       <div
                         className={
                           completionAnimation.action === "sold"
-                            ? "text-sold font-bold text-4xl sm:text-5xl animate-pulse"
-                            : "text-unsold font-bold text-4xl sm:text-5xl animate-bounce"
+                            ? "text-sold font-bold text-5xl sm:text-6xl animate-pulse"
+                            : "text-unsold font-bold text-5xl sm:text-6xl animate-bounce"
                         }
                       >
                         {completionAnimation.action === "sold" ? "SOLD" : "UNSOLD"}
@@ -672,11 +694,13 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     </div>
                   </div>
                 )}
+
                 {currentPlayer ? (
-                  <div className="text-center">
-                    <h2 className="mb-3 break-words font-head-arena text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-[2.75rem] lg:leading-[1.1]">
+                  <div className="flex flex-col items-center text-center">
+                    {/* Player name */}
+                    <h3 className="mb-3 max-w-lg break-words font-head-arena text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-5xl lg:leading-[1.08]">
                       {currentPlayer.name}
-                    </h2>
+                    </h3>
                     <Badge
                       variant="outline"
                       className="border-primary/30 bg-primary/10 px-4 py-1 font-head-arena text-sm font-bold text-arena-cyan"
@@ -684,31 +708,40 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                       Base {currentPlayer.basePrice} pts
                     </Badge>
 
+                    {/* Big bid display */}
                     <div
                       className={cn(
-                        "mt-8 rounded-2xl border p-6 transition-all duration-300 sm:p-10",
+                        "mt-8 w-full max-w-sm rounded-2xl border transition-all duration-300",
                         stateLite?.currentTeamId
-                          ? "arena-glow-bid border-primary/35 bg-gradient-to-b from-primary/15 to-primary/5"
-                          : "border-white/[0.08] bg-black/25 shadow-inner"
+                          ? "arena-glow-bid border-primary/40 bg-gradient-to-b from-primary/18 to-primary/[0.07]"
+                          : "border-white/[0.08] bg-black/30 shadow-inner"
                       )}
                     >
-                      <p className="mb-1 font-head-arena text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                        Current high bid
-                      </p>
-                      <p className="font-head-arena text-4xl font-extrabold tabular-nums tracking-tight text-arena-cyan sm:text-6xl lg:text-7xl">
-                        {stateLite?.currentBid || currentPlayer.basePrice}
-                      </p>
-                      <p className="mt-4 text-lg sm:text-xl">
-                        {stateLite?.currentTeamName ? (
-                          <span className="font-semibold text-primary">{stateLite.currentTeamName}</span>
-                        ) : (
-                          <span className="text-muted-foreground">Waiting for the first bid…</span>
-                        )}
-                      </p>
+                      <div className="px-6 py-7 sm:px-10 sm:py-9">
+                        <p className="mb-1 font-head-arena text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                          Current high bid
+                        </p>
+                        <p className="font-head-arena text-5xl font-extrabold tabular-nums tracking-tight text-arena-cyan sm:text-7xl lg:text-8xl">
+                          {stateLite?.currentBid || currentPlayer.basePrice}
+                        </p>
+                        <p className="mt-1 font-head-arena text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
+                          points
+                        </p>
+                        <div className="mt-4 border-t border-white/[0.07] pt-4">
+                          {stateLite?.currentTeamName ? (
+                            <p className="font-head-arena text-lg font-bold text-primary sm:text-xl">
+                              {stateLite.currentTeamName}
+                            </p>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Waiting for the first bid…</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
+                    {/* Bid history */}
                     {stateLite?.bidHistory && stateLite.bidHistory.length > 0 && (
-                      <div className="mt-8">
+                      <div className="mt-6 w-full max-w-sm">
                         <p className="mb-3 font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                           Latest bids
                         </p>
@@ -742,142 +775,157 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     </p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            {/* Player pool stats — tap Available / Unsold to browse; Sold scrolls to list below */}
-            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+            {/* ── Pool stats tiles ── */}
+            <div className="grid grid-cols-3 gap-3 sm:gap-4">
+              {/* Available */}
               <button
                 type="button"
                 onClick={() => togglePoolFilter("available")}
                 aria-pressed={poolFilter === "available"}
                 className={cn(
-                  ARENA_GLASS_CARD,
-                  "border-white/[0.08] bg-[color-mix(in_oklab,var(--card)_88%,transparent)] p-5 text-left shadow-lg shadow-black/20 backdrop-blur-md transition-all duration-200",
-                  "hover:-translate-y-0.5 hover:border-available/40 hover:shadow-xl hover:shadow-available/10",
+                  "group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-200 sm:p-5",
+                  "border-white/[0.08] bg-[color-mix(in_oklab,var(--card)_88%,transparent)] backdrop-blur-md",
+                  "shadow-lg shadow-black/20 hover:-translate-y-0.5 hover:shadow-xl",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-available/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                  poolFilter === "available" &&
-                    "border-available/50 bg-available/10 shadow-[0_0_32px_-8px] shadow-available/40 ring-1 ring-available/30"
+                  poolFilter === "available"
+                    ? "border-available/50 bg-available/10 shadow-[0_0_32px_-8px] shadow-available/40 ring-1 ring-available/30"
+                    : "hover:border-available/30"
                 )}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <Package className="h-5 w-5 shrink-0 text-available opacity-90" aria-hidden />
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-available/40 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                <div className="mb-2 flex items-start justify-between gap-1">
+                  <Package className="h-4 w-4 shrink-0 text-available" aria-hidden />
                   <ChevronDown
                     className={cn(
-                      "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+                      "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
                       poolFilter === "available" && "rotate-180 text-available"
                     )}
                     aria-hidden
                   />
                 </div>
-                <p className="mt-3 font-head-arena text-4xl font-extrabold tabular-nums tracking-tight text-available">
+                <p className="font-head-arena text-3xl font-extrabold tabular-nums tracking-tight text-available sm:text-4xl">
                   {playerStats.available}
                 </p>
-                <p className="mt-1 font-head-arena text-xs font-bold uppercase tracking-wider text-foreground">
+                <p className="mt-1 font-head-arena text-[10px] font-bold uppercase tracking-wider text-foreground">
                   Available
                 </p>
-                <p className="mt-1 text-xs leading-snug text-muted-foreground">Tap to list everyone still in the pool</p>
+                <p className="mt-0.5 hidden text-[10px] leading-snug text-muted-foreground sm:block">
+                  Tap to browse pool
+                </p>
               </button>
 
+              {/* Sold */}
               <button
                 type="button"
                 onClick={scrollToSold}
                 className={cn(
-                  ARENA_GLASS_CARD,
-                  "border-white/[0.08] bg-[color-mix(in_oklab,var(--card)_88%,transparent)] p-5 text-left shadow-lg shadow-black/20 backdrop-blur-md transition-all duration-200",
-                  "hover:-translate-y-0.5 hover:border-sold/40 hover:shadow-xl hover:shadow-sold/10",
+                  "group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-200 sm:p-5",
+                  "border-white/[0.08] bg-[color-mix(in_oklab,var(--card)_88%,transparent)] backdrop-blur-md",
+                  "shadow-lg shadow-black/20 hover:-translate-y-0.5 hover:border-sold/30 hover:shadow-xl",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sold/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 )}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <Trophy className="h-5 w-5 shrink-0 text-sold opacity-90" aria-hidden />
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    View list
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sold/40 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                <div className="mb-2 flex items-start justify-between gap-1">
+                  <Trophy className="h-4 w-4 shrink-0 text-sold" aria-hidden />
+                  <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    View
                   </span>
                 </div>
-                <p className="mt-3 font-head-arena text-4xl font-extrabold tabular-nums tracking-tight text-sold">
+                <p className="font-head-arena text-3xl font-extrabold tabular-nums tracking-tight text-sold sm:text-4xl">
                   {playerStats.sold}
                 </p>
-                <p className="mt-1 font-head-arena text-xs font-bold uppercase tracking-wider text-foreground">Sold</p>
-                <p className="mt-1 text-xs leading-snug text-muted-foreground">Jump to the live results table</p>
+                <p className="mt-1 font-head-arena text-[10px] font-bold uppercase tracking-wider text-foreground">
+                  Sold
+                </p>
+                <p className="mt-0.5 hidden text-[10px] leading-snug text-muted-foreground sm:block">
+                  Jump to results
+                </p>
               </button>
 
+              {/* Unsold */}
               <button
                 type="button"
                 onClick={() => togglePoolFilter("unsold")}
                 aria-pressed={poolFilter === "unsold"}
                 className={cn(
-                  ARENA_GLASS_CARD,
-                  "border-white/[0.08] bg-[color-mix(in_oklab,var(--card)_88%,transparent)] p-5 text-left shadow-lg shadow-black/20 backdrop-blur-md transition-all duration-200",
-                  "hover:-translate-y-0.5 hover:border-unsold/40 hover:shadow-xl hover:shadow-unsold/10",
+                  "group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-200 sm:p-5",
+                  "border-white/[0.08] bg-[color-mix(in_oklab,var(--card)_88%,transparent)] backdrop-blur-md",
+                  "shadow-lg shadow-black/20 hover:-translate-y-0.5 hover:shadow-xl",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-unsold/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                  poolFilter === "unsold" &&
-                    "border-unsold/50 bg-unsold/10 shadow-[0_0_32px_-8px] shadow-unsold/35 ring-1 ring-unsold/30"
+                  poolFilter === "unsold"
+                    ? "border-unsold/50 bg-unsold/10 shadow-[0_0_32px_-8px] shadow-unsold/35 ring-1 ring-unsold/30"
+                    : "hover:border-unsold/30"
                 )}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <Ban className="h-5 w-5 shrink-0 text-unsold opacity-90" aria-hidden />
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-unsold/40 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                <div className="mb-2 flex items-start justify-between gap-1">
+                  <Ban className="h-4 w-4 shrink-0 text-unsold" aria-hidden />
                   <ChevronDown
                     className={cn(
-                      "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+                      "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
                       poolFilter === "unsold" && "rotate-180 text-unsold"
                     )}
                     aria-hidden
                   />
                 </div>
-                <p className="mt-3 font-head-arena text-4xl font-extrabold tabular-nums tracking-tight text-unsold">
+                <p className="font-head-arena text-3xl font-extrabold tabular-nums tracking-tight text-unsold sm:text-4xl">
                   {playerStats.unsold}
                 </p>
-                <p className="mt-1 font-head-arena text-xs font-bold uppercase tracking-wider text-foreground">
+                <p className="mt-1 font-head-arena text-[10px] font-bold uppercase tracking-wider text-foreground">
                   Unsold
                 </p>
-                <p className="mt-1 text-xs leading-snug text-muted-foreground">Tap to list players passed without a sale</p>
+                <p className="mt-0.5 hidden text-[10px] leading-snug text-muted-foreground sm:block">
+                  Tap to browse
+                </p>
               </button>
             </div>
 
-            {/* Filtered pool list (available or unsold) */}
+            {/* ── Filtered pool list ── */}
             {poolFilter && (
-              <Card
+              <div
                 className={cn(
-                  VIEWER_SURFACE,
-                  "mt-4 overflow-hidden",
-                  poolFilter === "available" && "border-available/25 ring-1 ring-available/15",
-                  poolFilter === "unsold" && "border-unsold/25 ring-1 ring-unsold/15"
+                  "overflow-hidden rounded-2xl border backdrop-blur-md",
+                  "bg-[color-mix(in_oklab,var(--card)_86%,transparent)]",
+                  "shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)]",
+                  poolFilter === "available"
+                    ? "border-available/30 ring-1 ring-available/15"
+                    : "border-unsold/30 ring-1 ring-unsold/15"
                 )}
               >
-                <CardHeader className={cn(ARENA_CARD_HEADER, "relative space-y-1 border-b border-white/[0.06] py-4 sm:py-5")}>
+                <div className={cn(ARENA_CARD_HEADER, "relative flex flex-wrap items-center gap-3 border-b border-white/[0.06] px-5 py-4")}>
                   <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-                  <CardTitle
-                    className={cn(
-                      "flex flex-wrap items-center gap-2 text-base font-head-arena sm:text-lg",
-                      poolFilter === "available" && "text-available",
-                      poolFilter === "unsold" && "text-unsold"
-                    )}
-                  >
-                    {poolFilter === "available" ? (
-                      <>
-                        <Package className="h-5 w-5" />
-                        Available players
-                      </>
-                    ) : (
-                      <>
-                        <Ban className="h-5 w-5" />
-                        Unsold players
-                      </>
-                    )}
-                    <Badge variant="secondary" className="ml-auto font-mono text-xs tabular-nums">
+                  <span className={cn(
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border",
+                    poolFilter === "available"
+                      ? "border-available/30 bg-available/10 text-available"
+                      : "border-unsold/30 bg-unsold/10 text-unsold"
+                  )}>
+                    {poolFilter === "available" ? <Package className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className={cn(
+                      "font-head-arena text-sm font-bold tracking-tight",
+                      poolFilter === "available" ? "text-available" : "text-unsold"
+                    )}>
+                      {poolFilter === "available" ? "Available players" : "Unsold players"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
                       {poolFilter === "available"
-                        ? availablePlayersSorted.length
-                        : unsoldPlayersSorted.length}
-                    </Badge>
-                  </CardTitle>
-                  <p className="text-sm leading-relaxed text-muted-foreground">
+                        ? "Still in the pool — not yet sold or marked unsold."
+                        : "Passed without a sale in this auction."}
+                    </p>
+                  </div>
+                  <Badge variant="secondary" className="shrink-0 font-mono text-xs tabular-nums">
                     {poolFilter === "available"
-                      ? "Still in the pool — not yet sold or marked unsold. On the block is highlighted."
-                      : "Passed without a sale in this auction."}
-                  </p>
-                </CardHeader>
-                <CardContent className="p-0">
+                      ? availablePlayersSorted.length
+                      : unsoldPlayersSorted.length}
+                  </Badge>
+                </div>
+                <div>
                   {!allPlayers ? (
                     <p className="p-6 text-sm text-muted-foreground">Loading player list…</p>
                   ) : poolFilter === "available" && availablePlayersSorted.length === 0 ? (
@@ -886,7 +934,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     <p className="p-6 text-sm text-muted-foreground">No unsold players yet.</p>
                   ) : (
                     <ScrollArea className="h-[min(320px,50vh)] sm:h-[280px]">
-                      <ul className="divide-y divide-border/50 p-2">
+                      <ul className="divide-y divide-border/40 p-2">
                         {(poolFilter === "available" ? availablePlayersSorted : unsoldPlayersSorted).map(
                           (p) => {
                             const isOnBlock =
@@ -895,8 +943,10 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                               <li
                                 key={p._id}
                                 className={cn(
-                                  "flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-3 sm:px-4",
-                                  isOnBlock && "bg-primary/10 ring-1 ring-primary/25"
+                                  "flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-3 sm:px-4",
+                                  isOnBlock
+                                    ? "bg-primary/10 ring-1 ring-primary/25"
+                                    : "hover:bg-white/[0.02]"
                                 )}
                               >
                                 <div className="min-w-0 flex-1">
@@ -917,36 +967,40 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                       </ul>
                     </ScrollArea>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
 
-            {/* Sold results — always visible under pool tools */}
-            <div ref={soldSectionRef} id="viewer-sold-section" className="mt-6 scroll-mt-28">
-              <Card
-                className={cn(
-                  VIEWER_SURFACE,
-                  "overflow-hidden border-sold/30 bg-gradient-to-br from-card via-card to-sold/[0.08] ring-1 ring-sold/20"
-                )}
-              >
-                <CardHeader className={cn(ARENA_CARD_HEADER, "relative border-b border-white/[0.06] bg-sold/[0.06] pb-4 sm:pb-5")}>
-                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sold/35 to-transparent" />
-                  <div className="flex flex-wrap items-center gap-2 gap-y-1">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-sold/30 bg-sold/10">
-                      <Trophy className="h-5 w-5 text-sold" strokeWidth={1.75} />
+            {/* ── Sold results ── */}
+            <div ref={soldSectionRef} id="viewer-sold-section" className="scroll-mt-24">
+              <div className={cn(
+                "overflow-hidden rounded-2xl border backdrop-blur-md",
+                "border-sold/25 bg-[color-mix(in_oklab,var(--card)_85%,transparent)]",
+                "shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)] ring-1 ring-sold/10"
+              )}>
+                {/* sold gradient bg hint */}
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-[radial-gradient(ellipse_60%_80%_at_50%_0%,oklch(0.72_0.13_165/0.07),transparent)]" />
+
+                <div className={cn(ARENA_CARD_HEADER, "relative border-b border-sold/10 bg-sold/[0.04] px-5 py-4 sm:px-6")}>
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sold/40 to-transparent" />
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-sold/30 bg-sold/10">
+                      <Trophy className="h-4.5 w-4.5 text-sold" strokeWidth={1.75} />
                     </span>
-                    <CardTitle className="font-head-arena text-lg tracking-tight sm:text-xl">
-                      Sold <span className={ARENA_GRADIENT_TEXT}>players</span>
-                    </CardTitle>
-                    <Badge className="bg-sold/15 text-sold hover:bg-sold/20 border-sold/30">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-head-arena text-base font-extrabold tracking-tight sm:text-lg">
+                        Sold <span className={ARENA_GRADIENT_TEXT}>players</span>
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        Updates automatically as sales complete.
+                      </p>
+                    </div>
+                    <Badge className="shrink-0 border-sold/30 bg-sold/15 text-sold hover:bg-sold/20">
                       {soldPlayers.length} total
                     </Badge>
                   </div>
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    Player, winning team, and points — this table updates as sales complete.
-                  </p>
-                </CardHeader>
-                <CardContent className="p-0">
+                </div>
+                <div>
                   <ScrollArea className="h-[min(360px,55vh)] sm:h-[300px]">
                     <div className="p-4">
                       {!allPlayers ? (
@@ -997,105 +1051,125 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                       )}
                     </div>
                   </ScrollArea>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* ── Right column — Teams ── */}
+          <div>
+            <div className={cn(
+              "sticky top-[4.25rem] overflow-hidden rounded-2xl border border-white/[0.08]",
+              "bg-[color-mix(in_oklab,var(--card)_86%,transparent)]",
+              "shadow-[0_24px_60px_-20px_rgba(0,0,0,0.6)] ring-1 ring-white/[0.03]",
+              "backdrop-blur-md"
+            )}>
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+
+              {/* teams header */}
+              <div className={cn(ARENA_CARD_HEADER, "relative flex items-center gap-3 border-b border-white/[0.06] px-5 py-4")}>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 ring-1 ring-primary/10">
+                  <Users className="h-4 w-4 text-arena-cyan" strokeWidth={1.75} />
+                </span>
+                <div className="min-w-0">
+                  <p className="font-head-arena text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                    Live standings
+                  </p>
+                  <h2 className="font-head-arena text-base font-extrabold tracking-tight text-foreground">
+                    Team <span className={ARENA_GRADIENT_TEXT}>purses</span>
+                  </h2>
+                </div>
+              </div>
+
+              <ScrollArea className="h-[min(72vh,640px)] lg:h-[calc(100vh-12rem)]">
+                <div className="flex flex-col gap-2.5 p-3 sm:p-4">
+                  {teamsLive.map((team) => {
+                    const budgetPercent = (team.remainingBudget / team.totalBudget) * 100;
+                    const isLeading = stateLite?.currentTeamId === team._id;
+
+                    return (
+                      <div
+                        key={team._id ?? team.name}
+                        className={cn(
+                          "cursor-pointer rounded-xl border p-3.5 transition-all duration-200 sm:p-4",
+                          "border-white/[0.07] bg-black/20 ring-1 ring-white/[0.02]",
+                          "hover:border-white/[0.13] hover:bg-black/30",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[color-mix(in_oklab,var(--card)_92%,transparent)]",
+                          isLeading && "border-primary/40 bg-primary/[0.09] ring-1 ring-primary/20 arena-glow-bid",
+                          selectedTeamId === team._id && "ring-2 ring-primary/45 ring-offset-2 ring-offset-[color-mix(in_oklab,var(--card)_92%,transparent)]"
+                        )}
+                        onClick={() => team._id && setSelectedTeamId(team._id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            team._id && setSelectedTeamId(team._id);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`View sold players for ${team.name}`}
+                      >
+                        {/* team name row */}
+                        <div className="mb-2.5 flex items-center justify-between gap-2">
+                          <span className="truncate font-head-arena text-sm font-bold tracking-tight">{team.name}</span>
+                          {isLeading && (
+                            <Badge className="shrink-0 border border-primary/35 bg-primary/15 text-[9px] font-bold uppercase tracking-wide text-arena-cyan">
+                              Leading
+                            </Badge>
+                          )}
+                        </div>
+
+                        {/* budget bar */}
+                        <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-black/40 ring-1 ring-white/[0.04]">
+                          <div
+                            className={cn(
+                              "h-full rounded-full transition-all duration-500",
+                              isLeading
+                                ? "bg-gradient-to-r from-arena-cyan to-primary-end"
+                                : "bg-gradient-to-r from-primary to-primary-end"
+                            )}
+                            style={{ width: `${budgetPercent}%` }}
+                          />
+                        </div>
+
+                        {/* stats grid */}
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                          <div className="flex items-center gap-1 tabular-nums">
+                            <DollarSign className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+                            <span className="font-mono font-semibold text-arena-cyan tabular-nums">
+                              {team.remainingBudget}
+                            </span>
+                            <span className="text-muted-foreground/60">/{team.totalBudget}</span>
+                          </div>
+                          <div className="flex items-center gap-1 tabular-nums">
+                            <User className="h-3 w-3 shrink-0" />
+                            <span>{team.playersCount}/{auctionMeta.maxPlayersPerTeam}</span>
+                          </div>
+                          <div className="col-span-2 flex items-center gap-1">
+                            <span className="text-muted-foreground/70">Max bid</span>
+                            <span className="font-mono font-semibold text-arena-magenta">{team.maxBid}</span>
+                            <span className="text-muted-foreground/60">pts</span>
+                          </div>
+                        </div>
+
+                        {/* captain + bid count footer */}
+                        <div className="mt-2 flex items-center justify-between gap-2 border-t border-white/[0.05] pt-2 text-[10px] text-muted-foreground/70">
+                          <span className="truncate">
+                            {team.captainName ? `Capt: ${team.captainName}` : "—"}
+                          </span>
+                          <span className="shrink-0 tabular-nums">
+                            <span className="font-mono font-medium text-foreground/80">{recentBidCounts[team.name] ?? 0}</span> bids
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
             </div>
           </div>
 
-          {/* Right Column - Teams */}
-          <div>
-            <Card className={cn(VIEWER_SURFACE, "overflow-hidden")}>
-              <CardHeader
-                className={cn(ARENA_CARD_HEADER, "relative border-b border-white/[0.06] px-5 py-4 sm:py-5")}
-              >
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/25 to-transparent" />
-                <CardTitle className="flex items-center gap-3 font-head-arena text-base tracking-tight">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 shadow-inner ring-1 ring-primary/10">
-                    <Users className="h-4 w-4 text-arena-cyan" strokeWidth={1.75} />
-                  </span>
-                  Team <span className={ARENA_GRADIENT_TEXT}>purses</span>
-                </CardTitle>
-                <CardDescription className="mt-1 text-xs leading-relaxed sm:text-sm">
-                  Select a team for their sold roster. The current high bidder glows cyan.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-0">
-                <ScrollArea className="h-[min(600px,70vh)] lg:h-[600px]">
-                  <div className="flex flex-col gap-3 p-4">
-                    {teamsLive.map((team) => {
-                      const budgetPercent = (team.remainingBudget / team.totalBudget) * 100;
-                      const isLeading = stateLite?.currentTeamId === team._id;
-
-                      return (
-                        <div
-                          key={team._id ?? team.name}
-                          className={cn(
-                            "cursor-pointer rounded-xl border border-white/[0.08] bg-black/25 p-4 shadow-inner ring-1 ring-white/[0.02] transition-all duration-200",
-                            "hover:border-white/15 hover:bg-black/35",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[color-mix(in_oklab,var(--card)_92%,transparent)]",
-                            isLeading && "arena-glow-bid border-primary/40 bg-primary/[0.1]",
-                            selectedTeamId === team._id && "ring-2 ring-primary/45 ring-offset-2 ring-offset-[color-mix(in_oklab,var(--card)_92%,transparent)]"
-                          )}
-                          onClick={() => team._id && setSelectedTeamId(team._id)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              team._id && setSelectedTeamId(team._id);
-                            }
-                          }}
-                          role="button"
-                          tabIndex={0}
-                          aria-label={`View sold players for ${team.name}`}
-                        >
-                          <div className="mb-2 flex items-center justify-between gap-2">
-                            <span className="font-head-arena text-sm font-bold tracking-tight">{team.name}</span>
-                            {isLeading && (
-                              <Badge className="shrink-0 border border-primary/35 bg-primary/15 text-[10px] font-bold uppercase tracking-wide text-arena-cyan">
-                                Leading
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-muted-foreground">
-                            Captain: {team.captainName || "—"}
-                          </p>
-                          <div className="mb-2 mt-2 h-2 overflow-hidden rounded-full bg-black/40">
-                            <div
-                              className="h-full bg-gradient-to-r from-primary to-primary-end transition-all duration-500"
-                              style={{ width: `${budgetPercent}%` }}
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-                            <div className="tabular-nums">
-                              <DollarSign className="mr-0.5 inline h-3 w-3 align-text-bottom text-muted-foreground/80" />
-                              <span className="font-mono font-semibold text-arena-cyan tabular-nums">
-                                {team.remainingBudget}
-                              </span>
-                              <span> / {team.totalBudget}</span>
-                            </div>
-                            <div className="tabular-nums">
-                              <User className="mr-0.5 inline h-3 w-3" />
-                              {team.playersCount} / {auctionMeta.maxPlayersPerTeam}
-                            </div>
-                          </div>
-                          <p className="mt-2 text-[11px] text-muted-foreground">
-                            Max bid{" "}
-                            <span className="font-mono font-semibold text-arena-magenta">{team.maxBid}</span> pts
-                          </p>
-                          <p className="mt-1.5 text-[11px] text-muted-foreground">
-                            Recent bids:{" "}
-                            <span className="font-mono font-medium text-foreground">
-                              {recentBidCounts[team.name] ?? 0}
-                            </span>
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
         </div>
       </main>
 
