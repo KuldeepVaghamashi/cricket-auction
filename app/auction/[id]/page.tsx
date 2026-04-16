@@ -609,31 +609,28 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
         right={headerRight}
       />
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-3 py-4 sm:px-6 sm:py-8">
         {/* Live ticker bar */}
-        <div className="mb-5 flex items-center justify-between gap-4 rounded-2xl border border-white/[0.06] bg-black/30 px-4 py-2.5 backdrop-blur-sm sm:px-5">
-          <div className="flex items-center gap-2.5">
-            <span className="relative flex h-2.5 w-2.5 shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-arena-cyan opacity-60" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-arena-cyan" />
-            </span>
-            <p className="font-head-arena text-xs font-semibold uppercase tracking-wider text-arena-cyan">
-              Live auction
-            </p>
-          </div>
-          <p className="text-xs text-muted-foreground/80 sm:hidden">
-            +<span className="font-mono font-semibold text-foreground">{streamData.auction.minIncrement}</span> pts / raise
+        <div className="mb-4 flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-black/30 px-4 py-3 backdrop-blur-sm sm:mb-5 sm:px-5">
+          <span className="relative flex h-2.5 w-2.5 shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-arena-cyan opacity-60" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-arena-cyan" />
+          </span>
+          <p className="font-head-arena text-xs font-bold uppercase tracking-wider text-arena-cyan shrink-0">
+            Live
           </p>
-          <p className="hidden text-xs leading-relaxed text-muted-foreground sm:block">
-            Follow the player on the block and every team&apos;s purse — no refresh needed. Raises go up by{" "}
-            <span className="font-mono font-semibold text-foreground">{streamData.auction.minIncrement}</span> pts at a time.
+          <div className="mx-2 h-3.5 w-px bg-white/10 shrink-0" />
+          <p className="min-w-0 truncate text-xs text-muted-foreground">
+            <span className="text-foreground/80">{auctionMeta.name}</span>
+            <span className="mx-1.5 text-muted-foreground/40">·</span>
+            <span>+<span className="font-mono font-semibold text-foreground">{streamData.auction.minIncrement}</span> pts per raise</span>
           </p>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-3 lg:gap-6">
+        <div className="grid gap-4 lg:grid-cols-3 lg:gap-6">
 
           {/* ── Left / main column ── */}
-          <div className="flex flex-col gap-5 lg:col-span-2">
+          <div className="flex flex-col gap-4 lg:col-span-2">
 
             {/* ── ON THE BLOCK — hero spotlight ── */}
             <div className={cn(
@@ -662,7 +659,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
               </div>
 
               {/* body */}
-              <div className="relative px-5 py-7 sm:px-8 sm:py-10">
+              <div className="relative px-4 py-6 sm:px-8 sm:py-10">
                 {/* SOLD / UNSOLD overlay */}
                 {completionAnimation && (
                   <div
@@ -698,12 +695,12 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                 {currentPlayer ? (
                   <div className="flex flex-col items-center text-center">
                     {/* Player name */}
-                    <h3 className="mb-3 max-w-lg break-words font-head-arena text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-5xl lg:leading-[1.08]">
+                    <h3 className="mb-3 max-w-lg break-words font-head-arena text-[1.85rem] font-extrabold leading-tight tracking-tight text-foreground sm:text-4xl lg:text-5xl lg:leading-[1.08]">
                       {currentPlayer.name}
                     </h3>
                     <Badge
                       variant="outline"
-                      className="border-primary/30 bg-primary/10 px-4 py-1 font-head-arena text-sm font-bold text-arena-cyan"
+                      className="border-primary/30 bg-primary/10 px-4 py-1.5 font-head-arena text-sm font-bold text-arena-cyan"
                     >
                       Base {currentPlayer.basePrice} pts
                     </Badge>
@@ -711,17 +708,17 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     {/* Big bid display */}
                     <div
                       className={cn(
-                        "mt-8 w-full max-w-sm rounded-2xl border transition-all duration-300",
+                        "mt-6 w-full rounded-2xl border transition-all duration-300 sm:mt-8 sm:max-w-sm",
                         stateLite?.currentTeamId
                           ? "arena-glow-bid border-primary/40 bg-gradient-to-b from-primary/18 to-primary/[0.07]"
                           : "border-white/[0.08] bg-black/30 shadow-inner"
                       )}
                     >
-                      <div className="px-6 py-7 sm:px-10 sm:py-9">
+                      <div className="px-5 py-6 sm:px-10 sm:py-9">
                         <p className="mb-1 font-head-arena text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
                           Current high bid
                         </p>
-                        <p className="font-head-arena text-5xl font-extrabold tabular-nums tracking-tight text-arena-cyan sm:text-7xl lg:text-8xl">
+                        <p className="font-head-arena text-6xl font-extrabold tabular-nums tracking-tight text-arena-cyan sm:text-7xl lg:text-8xl">
                           {stateLite?.currentBid || currentPlayer.basePrice}
                         </p>
                         <p className="mt-1 font-head-arena text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
@@ -729,7 +726,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                         </p>
                         <div className="mt-4 border-t border-white/[0.07] pt-4">
                           {stateLite?.currentTeamName ? (
-                            <p className="font-head-arena text-lg font-bold text-primary sm:text-xl">
+                            <p className="font-head-arena text-base font-bold text-primary sm:text-xl">
                               {stateLite.currentTeamName}
                             </p>
                           ) : (
@@ -741,17 +738,17 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
 
                     {/* Bid history */}
                     {stateLite?.bidHistory && stateLite.bidHistory.length > 0 && (
-                      <div className="mt-6 w-full max-w-sm">
-                        <p className="mb-3 font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      <div className="mt-5 w-full sm:max-w-sm">
+                        <p className="mb-2.5 font-head-arena text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                           Latest bids
                         </p>
                         <div className="flex flex-wrap justify-center gap-2">
-                          {[...stateLite.bidHistory].reverse().slice(0, 5).map((bid, i) => (
+                          {[...stateLite.bidHistory].reverse().slice(0, 4).map((bid, i) => (
                             <Badge
                               key={bid.timestamp ? `${bid.timestamp}-${i}` : `${bid.teamName}-${bid.amount}-${i}`}
                               variant={i === 0 ? "default" : "outline"}
                               className={cn(
-                                "font-mono text-xs tabular-nums sm:text-sm",
+                                "font-mono text-xs tabular-nums",
                                 i === 0 && "border-primary/35 bg-primary/20 text-arena-cyan"
                               )}
                             >
@@ -779,24 +776,24 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
             </div>
 
             {/* ── Pool stats tiles ── */}
-            <div className="grid grid-cols-3 gap-3 sm:gap-4">
+            <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
               {/* Available */}
               <button
                 type="button"
                 onClick={() => togglePoolFilter("available")}
                 aria-pressed={poolFilter === "available"}
                 className={cn(
-                  "group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-200 sm:p-5",
+                  "group relative min-h-[88px] overflow-hidden rounded-2xl border p-3.5 text-left transition-all duration-200 sm:p-5",
                   "border-white/[0.08] bg-[color-mix(in_oklab,var(--card)_88%,transparent)] backdrop-blur-md",
-                  "shadow-lg shadow-black/20 hover:-translate-y-0.5 hover:shadow-xl",
+                  "active:scale-[0.97] hover:-translate-y-0.5",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-available/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                   poolFilter === "available"
-                    ? "border-available/50 bg-available/10 shadow-[0_0_32px_-8px] shadow-available/40 ring-1 ring-available/30"
+                    ? "border-available/50 bg-available/10 shadow-[0_0_28px_-8px] shadow-available/40 ring-1 ring-available/30"
                     : "hover:border-available/30"
                 )}
               >
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-available/40 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                <div className="mb-2 flex items-start justify-between gap-1">
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-available/50 to-transparent" style={{ opacity: poolFilter === "available" ? 1 : 0 }} />
+                <div className="mb-1.5 flex items-start justify-between gap-1">
                   <Package className="h-4 w-4 shrink-0 text-available" aria-hidden />
                   <ChevronDown
                     className={cn(
@@ -806,14 +803,11 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     aria-hidden
                   />
                 </div>
-                <p className="font-head-arena text-3xl font-extrabold tabular-nums tracking-tight text-available sm:text-4xl">
+                <p className="font-head-arena text-[2rem] font-extrabold tabular-nums leading-none tracking-tight text-available sm:text-4xl">
                   {playerStats.available}
                 </p>
-                <p className="mt-1 font-head-arena text-[10px] font-bold uppercase tracking-wider text-foreground">
+                <p className="mt-1.5 font-head-arena text-[9px] font-bold uppercase tracking-wider text-foreground/80">
                   Available
-                </p>
-                <p className="mt-0.5 hidden text-[10px] leading-snug text-muted-foreground sm:block">
-                  Tap to browse pool
                 </p>
               </button>
 
@@ -822,27 +816,24 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                 type="button"
                 onClick={scrollToSold}
                 className={cn(
-                  "group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-200 sm:p-5",
+                  "group relative min-h-[88px] overflow-hidden rounded-2xl border p-3.5 text-left transition-all duration-200 sm:p-5",
                   "border-white/[0.08] bg-[color-mix(in_oklab,var(--card)_88%,transparent)] backdrop-blur-md",
-                  "shadow-lg shadow-black/20 hover:-translate-y-0.5 hover:border-sold/30 hover:shadow-xl",
+                  "active:scale-[0.97] hover:-translate-y-0.5 hover:border-sold/30",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sold/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 )}
               >
                 <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sold/40 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                <div className="mb-2 flex items-start justify-between gap-1">
+                <div className="mb-1.5 flex items-start justify-between gap-1">
                   <Trophy className="h-4 w-4 shrink-0 text-sold" aria-hidden />
-                  <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    View
+                  <span className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">
+                    View ↓
                   </span>
                 </div>
-                <p className="font-head-arena text-3xl font-extrabold tabular-nums tracking-tight text-sold sm:text-4xl">
+                <p className="font-head-arena text-[2rem] font-extrabold tabular-nums leading-none tracking-tight text-sold sm:text-4xl">
                   {playerStats.sold}
                 </p>
-                <p className="mt-1 font-head-arena text-[10px] font-bold uppercase tracking-wider text-foreground">
+                <p className="mt-1.5 font-head-arena text-[9px] font-bold uppercase tracking-wider text-foreground/80">
                   Sold
-                </p>
-                <p className="mt-0.5 hidden text-[10px] leading-snug text-muted-foreground sm:block">
-                  Jump to results
                 </p>
               </button>
 
@@ -852,17 +843,17 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                 onClick={() => togglePoolFilter("unsold")}
                 aria-pressed={poolFilter === "unsold"}
                 className={cn(
-                  "group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-200 sm:p-5",
+                  "group relative min-h-[88px] overflow-hidden rounded-2xl border p-3.5 text-left transition-all duration-200 sm:p-5",
                   "border-white/[0.08] bg-[color-mix(in_oklab,var(--card)_88%,transparent)] backdrop-blur-md",
-                  "shadow-lg shadow-black/20 hover:-translate-y-0.5 hover:shadow-xl",
+                  "active:scale-[0.97] hover:-translate-y-0.5",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-unsold/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                   poolFilter === "unsold"
-                    ? "border-unsold/50 bg-unsold/10 shadow-[0_0_32px_-8px] shadow-unsold/35 ring-1 ring-unsold/30"
+                    ? "border-unsold/50 bg-unsold/10 shadow-[0_0_28px_-8px] shadow-unsold/35 ring-1 ring-unsold/30"
                     : "hover:border-unsold/30"
                 )}
               >
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-unsold/40 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                <div className="mb-2 flex items-start justify-between gap-1">
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-unsold/50 to-transparent" style={{ opacity: poolFilter === "unsold" ? 1 : 0 }} />
+                <div className="mb-1.5 flex items-start justify-between gap-1">
                   <Ban className="h-4 w-4 shrink-0 text-unsold" aria-hidden />
                   <ChevronDown
                     className={cn(
@@ -872,14 +863,11 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                     aria-hidden
                   />
                 </div>
-                <p className="font-head-arena text-3xl font-extrabold tabular-nums tracking-tight text-unsold sm:text-4xl">
+                <p className="font-head-arena text-[2rem] font-extrabold tabular-nums leading-none tracking-tight text-unsold sm:text-4xl">
                   {playerStats.unsold}
                 </p>
-                <p className="mt-1 font-head-arena text-[10px] font-bold uppercase tracking-wider text-foreground">
+                <p className="mt-1.5 font-head-arena text-[9px] font-bold uppercase tracking-wider text-foreground/80">
                   Unsold
-                </p>
-                <p className="mt-0.5 hidden text-[10px] leading-snug text-muted-foreground sm:block">
-                  Tap to browse
                 </p>
               </button>
             </div>
@@ -1001,7 +989,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                   </div>
                 </div>
                 <div>
-                  <ScrollArea className="h-[min(360px,55vh)] sm:h-[300px]">
+                  <ScrollArea className="h-[240px] sm:h-[300px]">
                     <div className="p-4">
                       {!allPlayers ? (
                         <p className="text-sm text-muted-foreground">Loading results…</p>
@@ -1036,11 +1024,11 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                                   key={p._id}
                                   className="border-border/50 transition-colors hover:bg-sold/5"
                                 >
-                                  <TableCell className="font-semibold">{p.name}</TableCell>
-                                  <TableCell className="text-muted-foreground">
+                                  <TableCell className="px-3 py-2.5 font-semibold sm:px-4 sm:py-3">{p.name}</TableCell>
+                                  <TableCell className="px-3 py-2.5 text-muted-foreground sm:px-4 sm:py-3">
                                     {p.soldTo ? teamNameById.get(p.soldTo) ?? "—" : "—"}
                                   </TableCell>
-                                  <TableCell className="text-right font-mono tabular-nums text-sold">
+                                  <TableCell className="px-3 py-2.5 text-right font-mono tabular-nums text-sold sm:px-4 sm:py-3">
                                     {typeof p.soldPrice === "number" ? p.soldPrice : "—"}
                                   </TableCell>
                                 </TableRow>
@@ -1060,7 +1048,7 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
           {/* ── Right column — Teams ── */}
           <div>
             <div className={cn(
-              "sticky top-[4.25rem] overflow-hidden rounded-2xl border border-white/[0.08]",
+              "overflow-hidden rounded-2xl border border-white/[0.08] lg:sticky lg:top-[4.25rem]",
               "bg-[color-mix(in_oklab,var(--card)_86%,transparent)]",
               "shadow-[0_24px_60px_-20px_rgba(0,0,0,0.6)] ring-1 ring-white/[0.03]",
               "backdrop-blur-md"
@@ -1068,22 +1056,28 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
               <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
 
               {/* teams header */}
-              <div className={cn(ARENA_CARD_HEADER, "relative flex items-center gap-3 border-b border-white/[0.06] px-5 py-4")}>
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 ring-1 ring-primary/10">
-                  <Users className="h-4 w-4 text-arena-cyan" strokeWidth={1.75} />
-                </span>
-                <div className="min-w-0">
-                  <p className="font-head-arena text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                    Live standings
-                  </p>
-                  <h2 className="font-head-arena text-base font-extrabold tracking-tight text-foreground">
-                    Team <span className={ARENA_GRADIENT_TEXT}>purses</span>
-                  </h2>
+              <div className={cn(ARENA_CARD_HEADER, "relative flex items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3.5 sm:px-5 sm:py-4")}>
+                <div className="flex items-center gap-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 ring-1 ring-primary/10 sm:h-9 sm:w-9">
+                    <Users className="h-4 w-4 text-arena-cyan" strokeWidth={1.75} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-head-arena text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                      Live standings
+                    </p>
+                    <h2 className="font-head-arena text-sm font-extrabold tracking-tight text-foreground sm:text-base">
+                      Team <span className={ARENA_GRADIENT_TEXT}>purses</span>
+                    </h2>
+                  </div>
                 </div>
+                <Badge variant="secondary" className="shrink-0 font-mono text-[10px] tabular-nums">
+                  {teamsLive.length}
+                </Badge>
               </div>
 
-              <ScrollArea className="h-[min(72vh,640px)] lg:h-[calc(100vh-12rem)]">
-                <div className="flex flex-col gap-2.5 p-3 sm:p-4">
+              {/* Mobile: 2-col grid, no fixed height. lg: scroll area */}
+              <div className="lg:hidden">
+                <div className="grid grid-cols-2 gap-2 p-3">
                   {teamsLive.map((team) => {
                     const budgetPercent = (team.remainingBudget / team.totalBudget) * 100;
                     const isLeading = stateLite?.currentTeamId === team._id;
@@ -1092,7 +1086,70 @@ export default function AuctionViewerPage({ params }: { params: Promise<{ id: st
                       <div
                         key={team._id ?? team.name}
                         className={cn(
-                          "cursor-pointer rounded-xl border p-3.5 transition-all duration-200 sm:p-4",
+                          "cursor-pointer rounded-xl border p-3 transition-all duration-200 active:scale-[0.97]",
+                          "border-white/[0.07] bg-black/20",
+                          isLeading && "border-primary/40 bg-primary/[0.09] ring-1 ring-primary/15 arena-glow-bid",
+                          selectedTeamId === team._id && "ring-2 ring-primary/40"
+                        )}
+                        onClick={() => team._id && setSelectedTeamId(team._id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            team._id && setSelectedTeamId(team._id);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`View sold players for ${team.name}`}
+                      >
+                        <div className="mb-1.5 flex items-start justify-between gap-1">
+                          <span className="truncate font-head-arena text-xs font-bold tracking-tight leading-tight">
+                            {team.name}
+                          </span>
+                          {isLeading && (
+                            <span className="ml-1 shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-arena-cyan">
+                              ●
+                            </span>
+                          )}
+                        </div>
+                        {/* budget bar */}
+                        <div className="mb-2 h-1 overflow-hidden rounded-full bg-black/40">
+                          <div
+                            className={cn(
+                              "h-full rounded-full transition-all duration-500",
+                              isLeading
+                                ? "bg-gradient-to-r from-arena-cyan to-primary-end"
+                                : "bg-gradient-to-r from-primary to-primary-end"
+                            )}
+                            style={{ width: `${budgetPercent}%` }}
+                          />
+                        </div>
+                        <div className="flex items-baseline gap-1 text-[11px]">
+                          <span className="font-mono font-bold text-arena-cyan tabular-nums">{team.remainingBudget}</span>
+                          <span className="text-muted-foreground/60 text-[9px]">/{team.totalBudget} pts</span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-[10px] text-muted-foreground/70">
+                          <span className="tabular-nums">{team.playersCount}/{auctionMeta.maxPlayersPerTeam} players</span>
+                          <span className="font-mono text-arena-magenta">{team.maxBid}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Desktop: scrollable column */}
+              <ScrollArea className="hidden lg:block lg:h-[calc(100vh-12rem)]">
+                <div className="flex flex-col gap-2.5 p-4">
+                  {teamsLive.map((team) => {
+                    const budgetPercent = (team.remainingBudget / team.totalBudget) * 100;
+                    const isLeading = stateLite?.currentTeamId === team._id;
+
+                    return (
+                      <div
+                        key={team._id ?? team.name}
+                        className={cn(
+                          "cursor-pointer rounded-xl border p-3.5 transition-all duration-200",
                           "border-white/[0.07] bg-black/20 ring-1 ring-white/[0.02]",
                           "hover:border-white/[0.13] hover:bg-black/30",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[color-mix(in_oklab,var(--card)_92%,transparent)]",
